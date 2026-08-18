@@ -59,7 +59,7 @@ export default function Footer() {
             </div>
             <div>
               <p className="font-bold text-white text-xs">24/7 VIP Support</p>
-              <p className="text-[11px] text-gray-400">Hotline & AI Assistance</p>
+              <p className="text-[11px] text-gray-400">Hotline & Dedicated Support</p>
             </div>
           </div>
         </div>

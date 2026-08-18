@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Product } from '../../../types';
 import { useCart } from '../../../context/CartContext';
-import { Star, ShieldCheck, Truck, RefreshCw, ShoppingBag, Zap, Cpu, ArrowLeft, Share2, Check } from 'lucide-react';
+import { Star, ShieldCheck, Truck, RefreshCw, ShoppingBag, Zap, ArrowLeft, Share2, Check } from 'lucide-react';
 import ProductCard from '../../../components/ProductCard';
 import { PRODUCTS } from '../../../data/products';
 import { getCloudinaryImageUrl } from '../../../lib/cloudinary';
@@ -14,9 +14,6 @@ export default function ProductDetailClient({ product }: { product: Product }) {
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [aiQuestion, setAiQuestion] = useState('');
-  const [aiAnswer, setAiAnswer] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
 
   const discountPct = product.originalPrice
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
@@ -38,31 +35,6 @@ export default function ProductDetailClient({ product }: { product: Product }) {
       navigator.clipboard.writeText(window.location.href);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
-    }
-  };
-
-  const handleAskAi = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!aiQuestion.trim()) return;
-    setAiLoading(true);
-    setAiAnswer(null);
-
-    try {
-      const res = await fetch('/api/ai-advisor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: aiQuestion,
-          productName: product.name,
-          productSpecs: product.specs
-        })
-      });
-      const data = await res.json();
-      setAiAnswer(data.answer);
-    } catch (err) {
-      setAiAnswer(`Regarding ${product.name}: This device features titanium alloy frame, high-performance LTPO AMOLED screen, and custom hardware cooling.`);
-    } finally {
-      setAiLoading(false);
     }
   };
 
@@ -217,37 +189,6 @@ export default function ProductDetailClient({ product }: { product: Product }) {
                 <span>Buy Now (Express)</span>
               </button>
             </div>
-          </div>
-
-          {/* AI Q&A Widget inside Product Page */}
-          <div className="p-5 rounded-2xl bg-purple-950/20 border border-purple-500/30 space-y-3">
-            <div className="flex items-center gap-2 text-purple-300 text-xs font-bold font-mono">
-              <Cpu className="w-4 h-4 text-purple-400" />
-              <span>Ask AI About {product.name}</span>
-            </div>
-
-            <form onSubmit={handleAskAi} className="flex gap-2">
-              <input
-                type="text"
-                placeholder={`Ask AI: e.g. "Does ${product.name} support fast charging?"`}
-                value={aiQuestion}
-                onChange={(e) => setAiQuestion(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-xl bg-black/60 border border-white/15 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-purple-400"
-              />
-              <button
-                type="submit"
-                disabled={aiLoading}
-                className="px-4 py-2 rounded-xl bg-purple-600 text-white font-bold text-xs uppercase shrink-0"
-              >
-                {aiLoading ? '...' : 'Ask AI'}
-              </button>
-            </form>
-
-            {aiAnswer && (
-              <p className="text-xs text-cyan-200 bg-black/80 p-3 rounded-xl border border-white/10 whitespace-pre-line">
-                {aiAnswer}
-              </p>
-            )}
           </div>
 
         </div>

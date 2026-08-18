@@ -6,7 +6,6 @@ import multer from 'multer';
 import dotenv from 'dotenv';
 import { PRODUCTS } from './src/data/products';
 import { supabase, isSupabaseConfigured } from './src/lib/supabase';
-import { askAiAdvisor } from './src/lib/ai';
 import { getCloudinaryImageUrl } from './src/lib/cloudinary';
 import { Product } from './src/types';
 
@@ -313,24 +312,6 @@ async function startServer() {
       res.json({ success: true, message: 'Product deleted' });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.post('/api/ai-advisor', async (req, res) => {
-    try {
-      const { question, productName, productSpecs } = req.body;
-
-      if (!question) {
-        return res.status(400).json({ error: 'Question is required' });
-      }
-
-      const answer = await askAiAdvisor(question, productName, productSpecs);
-
-      res.json({ answer });
-    } catch (err: any) {
-      res.json({
-        answer: 'KLLYEEIN AI Advisor: All flagship devices feature Grade 5 aerospace titanium, high-frequency OLED displays, and official 1-year brand warranty.'
-      });
     }
   });
 

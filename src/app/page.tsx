@@ -2,7 +2,6 @@ import React from 'react';
 import HeroBanner from '../components/HeroBanner';
 import CategoryGrid from '../components/CategoryGrid';
 import ProductGrid from '../components/ProductGrid';
-import AIAdvisorWidget from '../components/AIAdvisorWidget';
 import { Truck, ShieldCheck, Zap, RefreshCw } from 'lucide-react';
 
 export default function HomePage() {
@@ -16,9 +15,6 @@ export default function HomePage() {
 
       {/* Main Products Grid with search, filter tabs, sorting */}
       <ProductGrid />
-
-      {/* Gemini AI Tech Advisor Widget */}
-      <AIAdvisorWidget />
 
       {/* Trust & Guarantee Banner */}
       <section className="py-12 bg-surface/50 border-t border-white/10">
