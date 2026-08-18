@@ -1,26 +1,90 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 
-  process.env.VITE_SUPABASE_URL || 
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 
-  process.env.SUPABASE_URL;
+export interface SupabaseConfig {
+  url: string;
+  anonKey: string;
+  isConfigured: boolean;
+}
 
-const supabaseAnonKey = 
-  process.env.VITE_SUPABASE_ANON_KEY || 
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
-  process.env.SUPABASE_ANON_KEY;
+/**
+ * Dynamically resolves Supabase URL and Anon Key from environment variables or browser storage
+ */
+export function getSupabaseConfig(): SupabaseConfig {
+  let url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    '';
 
-// Verify if Supabase credentials exist and are valid (not mock placeholders)
-export const isSupabaseConfigured = Boolean(
-  supabaseUrl && 
-  supabaseAnonKey && 
-  !supabaseUrl.includes('your-supabase-project') && 
-  !supabaseUrl.includes('placeholder')
-);
+  let anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    '';
 
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl!, supabaseAnonKey!)
-  : null;
+  // Fallback to client localStorage if user configured via UI
+  if (typeof window !== 'undefined') {
+    const savedUrl = localStorage.getItem('kllyeein_supabase_url');
+    const savedKey = localStorage.getItem('kllyeein_supabase_anon_key');
+    if (savedUrl && !url) url = savedUrl;
+    if (savedKey && !anonKey) anonKey = savedKey;
+  }
+
+  const isConfigured = Boolean(
+    url &&
+    anonKey &&
+    !url.includes('your-supabase-project') &&
+    !url.includes('placeholder') &&
+    url.startsWith('http')
+  );
+
+  return { url, anonKey, isConfigured };
+}
+
+let cachedClient: SupabaseClient | null = null;
+let lastUsedUrl = '';
+let lastUsedKey = '';
+
+export function getSupabaseClient(): SupabaseClient | null {
+  const config = getSupabaseConfig();
+  if (!config.isConfigured) return null;
+
+  if (!cachedClient || lastUsedUrl !== config.url || lastUsedKey !== config.anonKey) {
+    cachedClient = createClient(config.url, config.anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: 'kllyeein_sb_auth_token',
+      },
+    });
+    lastUsedUrl = config.url;
+    lastUsedKey = config.anonKey;
+  }
+
+  return cachedClient;
+}
+
+export function saveSupabaseConfig(url: string, anonKey: string): boolean {
+  if (typeof window === 'undefined') return false;
+  const cleanUrl = url.trim();
+  const cleanKey = anonKey.trim();
+
+  if (!cleanUrl || !cleanKey) {
+    localStorage.removeItem('kllyeein_supabase_url');
+    localStorage.removeItem('kllyeein_supabase_anon_key');
+    cachedClient = null;
+    return false;
+  }
+
+  localStorage.setItem('kllyeein_supabase_url', cleanUrl);
+  localStorage.setItem('kllyeein_supabase_anon_key', cleanKey);
+  cachedClient = null;
+  return true;
+}
+
+export const isSupabaseConfigured = getSupabaseConfig().isConfigured;
+export const supabase = getSupabaseClient();
 
 /**
  * SQL Setup string provided for users to copy and run in their Supabase SQL Editor

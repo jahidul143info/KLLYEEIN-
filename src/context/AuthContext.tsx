@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getSupabaseClient, getSupabaseConfig, saveSupabaseConfig } from '../lib/supabase';
 import { UserProfile } from '../types';
 
 export const DEFAULT_ADMIN_EMAIL = 'admin.osman@gmail.com';
@@ -21,13 +21,14 @@ interface AuthContextType {
   isAuthModalOpen: boolean;
   authModalContext: 'general' | 'checkout';
   setIsAuthModalOpen: (open: boolean, context?: 'general' | 'checkout') => void;
-  signInWithGoogle: (customEmail?: string, customName?: string) => Promise<{ error?: string }>;
+  signInWithGoogle: () => Promise<{ error?: string }>;
   signInWithPassword: (email: string, pass: string) => Promise<{ error?: string }>;
   signUpWithPassword: (fullName: string, email: string, pass: string) => Promise<{ error?: string }>;
   updateAdminCredentials: (data: { email: string; password?: string; fullName?: string }) => Promise<{ success?: boolean; error?: string }>;
   signOut: () => Promise<void>;
   requireAuthForCheckout: (proceedToCheckout: () => void) => void;
   isSupabaseConfigured: boolean;
+  saveSupabaseSettings: (url: string, key: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -38,6 +39,7 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
   const [isAuthModalOpen, setIsAuthModalOpenState] = useState(false);
   const [authModalContext, setAuthModalContext] = useState<'general' | 'checkout'>('general');
   const [pendingCheckoutCallback, setPendingCheckoutCallback] = useState<(() => void) | null>(null);
+  const [supabaseReady, setSupabaseReady] = useState(false);
 
   const [adminCredentials, setAdminCredentials] = useState<AdminCredentials>(() => {
     if (typeof window !== 'undefined') {
@@ -89,21 +91,40 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
     }
   }, [pendingCheckoutCallback]);
 
-  // Initial Auth Check
+  // Initial Auth Check & Supabase Session Listener
   useEffect(() => {
-    if (isSupabaseConfigured && supabase) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
+    const client = getSupabaseClient();
+    const config = getSupabaseConfig();
+    setSupabaseReady(config.isConfigured);
+
+    if (config.isConfigured && client) {
+      // 1. Check active session (including returning from Google OAuth redirect)
+      client.auth.getSession().then(({ data: { session }, error }) => {
+        if (error) {
+          console.warn('Supabase getSession error:', error.message);
+        }
+
         if (session?.user) {
-          const email = session.user.email || 'user@kllyeein.com';
+          const email = session.user.email || '';
           const isAdm = getRoleFromEmail(email) === 'admin';
+          const name =
+            session.user.user_metadata?.full_name ||
+            session.user.user_metadata?.name ||
+            (isAdm ? adminCredentials.fullName : email.split('@')[0]);
+          const avatar =
+            session.user.user_metadata?.avatar_url ||
+            session.user.user_metadata?.picture ||
+            `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(email || 'user')}`;
+
           const userObj: UserProfile = {
             id: session.user.id,
             email,
-            fullName: session.user.user_metadata?.full_name || (isAdm ? adminCredentials.fullName : email.split('@')[0]),
-            avatarUrl: session.user.user_metadata?.avatar_url,
+            fullName: name,
+            avatarUrl: avatar,
             role: isAdm ? 'admin' : 'customer',
           };
           setUser(userObj);
+          localStorage.setItem('kllyeein_user', JSON.stringify(userObj));
         } else {
           // Check local persistence
           const savedUser = localStorage.getItem('kllyeein_user');
@@ -118,26 +139,39 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
         setIsLoading(false);
       });
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // 2. Real-time Supabase Auth state changes
+      const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
         if (session?.user) {
-          const email = session.user.email || 'user@kllyeein.com';
+          const email = session.user.email || '';
           const isAdm = getRoleFromEmail(email) === 'admin';
+          const name =
+            session.user.user_metadata?.full_name ||
+            session.user.user_metadata?.name ||
+            (isAdm ? adminCredentials.fullName : email.split('@')[0]);
+          const avatar =
+            session.user.user_metadata?.avatar_url ||
+            session.user.user_metadata?.picture ||
+            `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(email || 'user')}`;
+
           const userObj: UserProfile = {
             id: session.user.id,
             email,
-            fullName: session.user.user_metadata?.full_name || (isAdm ? adminCredentials.fullName : email.split('@')[0]),
-            avatarUrl: session.user.user_metadata?.avatar_url,
+            fullName: name,
+            avatarUrl: avatar,
             role: isAdm ? 'admin' : 'customer',
           };
           setUser(userObj);
           localStorage.setItem('kllyeein_user', JSON.stringify(userObj));
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          localStorage.removeItem('kllyeein_user');
         }
         setIsLoading(false);
       });
 
       return () => subscription.unsubscribe();
     } else {
-      // Local demo persistence check
+      // Local persistence check when Supabase is not yet connected
       const savedUser = localStorage.getItem('kllyeein_user');
       if (savedUser) {
         try {
@@ -150,38 +184,46 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
     }
   }, [adminCredentials.email]);
 
-  // Google Sign In (Direct Gmail or OAuth)
-  const signInWithGoogle = async (customEmail?: string, customName?: string): Promise<{ error?: string }> => {
-    const gmail = customEmail?.trim() || 'customer.google@gmail.com';
-    const name = customName?.trim() || gmail.split('@')[0];
+  // Real Supabase Google OAuth Sign In
+  const signInWithGoogle = async (): Promise<{ error?: string }> => {
+    const client = getSupabaseClient();
+    const config = getSupabaseConfig();
 
-    if (isSupabaseConfigured && supabase && !customEmail) {
-      try {
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/` : undefined,
-          },
-        });
-        if (error) throw error;
-        return {};
-      } catch (err: any) {
-        console.warn('Supabase OAuth notice, using direct Google profile:', err.message);
-      }
+    if (!config.isConfigured || !client) {
+      return {
+        error:
+          'Supabase is not configured yet. Please configure your NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Settings or the Admin Database Tab.',
+      };
     }
 
-    // Direct Google Profile Authentication (Instant 1-Click for user's Gmail)
-    const isAdm = getRoleFromEmail(gmail) === 'admin';
-    const authedUser: UserProfile = {
-      id: `google-${Date.now()}`,
-      email: gmail,
-      fullName: name,
-      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(gmail)}`,
-      role: isAdm ? 'admin' : 'customer',
-    };
+    try {
+      const redirectUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/`
+        : undefined;
 
-    handleAuthSuccess(authedUser);
-    return {};
+      const { data, error } = await client.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      if (data?.url && typeof window !== 'undefined') {
+        window.location.href = data.url;
+      }
+
+      return {};
+    } catch (err: any) {
+      return { error: err.message || 'Google OAuth failed to initialize.' };
+    }
   };
 
   // Password Sign In
@@ -210,31 +252,38 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
     }
 
     // Check Supabase if configured
-    if (isSupabaseConfigured && supabase) {
+    const client = getSupabaseClient();
+    const config = getSupabaseConfig();
+
+    if (config.isConfigured && client) {
       try {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await client.auth.signInWithPassword({
           email: trimmedEmail,
           password: trimmedPass,
         });
 
-        if (!error && data?.user) {
-          const userEmail = data.user.email || trimmedEmail;
-          const isAdm = getRoleFromEmail(userEmail) === 'admin';
-          const authedUser: UserProfile = {
+        if (error) {
+          return { error: error.message };
+        }
+
+        if (data?.user) {
+          const isAdm = getRoleFromEmail(data.user.email) === 'admin';
+          const userObj: UserProfile = {
             id: data.user.id,
-            email: userEmail,
-            fullName: data.user.user_metadata?.full_name || (isAdm ? adminCredentials.fullName : userEmail.split('@')[0]),
+            email: data.user.email || trimmedEmail,
+            fullName: data.user.user_metadata?.full_name || (isAdm ? adminCredentials.fullName : trimmedEmail.split('@')[0]),
+            avatarUrl: data.user.user_metadata?.avatar_url,
             role: isAdm ? 'admin' : 'customer',
           };
-          handleAuthSuccess(authedUser);
+          handleAuthSuccess(userObj);
           return {};
         }
       } catch (err: any) {
-        console.warn('Supabase signin notice:', err.message);
+        return { error: err.message || 'Sign in failed. Please check your credentials.' };
       }
     }
 
-    // Check registered users in local storage
+    // Local registered users pool fallback
     if (typeof window !== 'undefined') {
       const storedUsersRaw = localStorage.getItem('kllyeein_registered_users');
       if (storedUsersRaw) {
@@ -260,15 +309,7 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
       }
     }
 
-    // Customer sign-in (Instant fallback account generation)
-    const customerUser: UserProfile = {
-      id: `user-${Date.now()}`,
-      email: trimmedEmail,
-      fullName: trimmedEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-      role: 'customer',
-    };
-    handleAuthSuccess(customerUser);
-    return {};
+    return { error: 'Account not found. Please click Sign Up to create your account or continue with Google.' };
   };
 
   // Sign Up / Create New Account
@@ -288,9 +329,12 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
     }
 
     // If Supabase is configured, create Supabase user
-    if (isSupabaseConfigured && supabase) {
+    const client = getSupabaseClient();
+    const config = getSupabaseConfig();
+
+    if (config.isConfigured && client) {
       try {
-        const { data, error } = await supabase.auth.signUp({
+        const { data, error } = await client.auth.signUp({
           email: cleanEmail,
           password: cleanPass,
           options: {
@@ -301,10 +345,21 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
         });
 
         if (error) {
-          console.warn('Supabase sign up warning:', error.message);
+          return { error: error.message };
+        }
+
+        if (data.user) {
+          const newUser: UserProfile = {
+            id: data.user.id,
+            email: cleanEmail,
+            fullName: cleanName,
+            role: getRoleFromEmail(cleanEmail),
+          };
+          handleAuthSuccess(newUser);
+          return {};
         }
       } catch (err: any) {
-        console.warn('Supabase signup exception:', err.message);
+        return { error: err.message || 'Registration failed with Supabase.' };
       }
     }
 
@@ -375,11 +430,20 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
     }
   };
 
+  // Save Supabase Settings dynamically
+  const saveSupabaseSettings = (url: string, key: string): boolean => {
+    const success = saveSupabaseConfig(url, key);
+    const updatedConfig = getSupabaseConfig();
+    setSupabaseReady(updatedConfig.isConfigured);
+    return success;
+  };
+
   // Sign Out
   const signOut = async () => {
-    if (isSupabaseConfigured && supabase) {
+    const client = getSupabaseClient();
+    if (client) {
       try {
-        await supabase.auth.signOut();
+        await client.auth.signOut();
       } catch (e) {
         console.error(e);
       }
@@ -391,10 +455,8 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
   // Checkout Authentication Gate
   const requireAuthForCheckout = (proceedToCheckout: () => void) => {
     if (user) {
-      // User is already logged in -> proceed directly
       proceedToCheckout();
     } else {
-      // User is not logged in -> hold callback and prompt AuthModal
       setPendingCheckoutCallback(() => proceedToCheckout);
       setIsAuthModalOpen(true, 'checkout');
     }
@@ -420,7 +482,8 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
         updateAdminCredentials,
         signOut,
         requireAuthForCheckout,
-        isSupabaseConfigured,
+        isSupabaseConfigured: supabaseReady,
+        saveSupabaseSettings,
       }}
     >
       {children}

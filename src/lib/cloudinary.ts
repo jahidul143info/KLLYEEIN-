@@ -3,10 +3,10 @@
  */
 
 const cloudName = 
-  process.env.VITE_CLOUDINARY_CLOUD_NAME || 
   process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 
   process.env.CLOUDINARY_CLOUD_NAME || 
-  'kllyeein-gadgets';
+  process.env.VITE_CLOUDINARY_CLOUD_NAME || 
+  'pgggwtrz';
 
 export interface CloudinaryTransformOptions {
   width?: number;

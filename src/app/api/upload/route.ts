@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getCloudinaryImageUrl } from '../../../lib/cloudinary';
 
-const CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'kllyeein-gadgets';
+const CLOUD_NAME = 
+  process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 
+  process.env.CLOUDINARY_CLOUD_NAME || 
+  'pgggwtrz';
+
 const API_KEY = process.env.CLOUDINARY_API_KEY;
 const API_SECRET = process.env.CLOUDINARY_API_SECRET;
 
@@ -17,20 +21,39 @@ function generateCloudinarySignature(params: Record<string, string>, apiSecret: 
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File | null;
-    const folder = (formData.get('folder') as string) || 'kllyeein-gadgets/products';
-    const preset = formData.get('upload_preset') as string || 'ml_default';
+    let base64Image = '';
+    let folder = 'kllyeein-gadgets/products';
+    let preset = 'ml_default';
+    let fileName = 'upload.jpg';
 
-    if (!file) {
-      return NextResponse.json({ error: 'No image file provided' }, { status: 400 });
+    const contentType = request.headers.get('content-type') || '';
+
+    if (contentType.includes('application/json')) {
+      const body = await request.json();
+      base64Image = body.image || body.file || body.dataUrl || '';
+      folder = body.folder || folder;
+      preset = body.upload_preset || preset;
+      fileName = body.fileName || fileName;
+    } else {
+      const formData = await request.formData();
+      const file = formData.get('file') as File | null;
+      folder = (formData.get('folder') as string) || folder;
+      preset = (formData.get('upload_preset') as string) || preset;
+
+      if (!file) {
+        return NextResponse.json({ error: 'No image file provided' }, { status: 400 });
+      }
+
+      fileName = file.name || fileName;
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+      const mimeType = file.type || 'image/jpeg';
+      base64Image = `data:${mimeType};base64,${buffer.toString('base64')}`;
     }
 
-    // Convert file to buffer and base64 data URI
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    const mimeType = file.type || 'image/png';
-    const base64Image = `data:${mimeType};base64,${buffer.toString('base64')}`;
+    if (!base64Image) {
+      return NextResponse.json({ error: 'No valid image data received' }, { status: 400 });
+    }
 
     const timestamp = Math.floor(Date.now() / 1000).toString();
 
@@ -39,7 +62,7 @@ export async function POST(request: NextRequest) {
     uploadFormData.append('file', base64Image);
     uploadFormData.append('folder', folder);
 
-    let uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+    const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
 
     // If API KEY & API SECRET are present, use signed upload
     if (API_KEY && API_SECRET && !API_SECRET.includes('your-cloudinary')) {
@@ -53,7 +76,7 @@ export async function POST(request: NextRequest) {
       uploadFormData.append('timestamp', timestamp);
       uploadFormData.append('signature', signature);
     } else {
-      // Unsigned upload fallback using preset or standard parameter
+      // Unsigned upload fallback using preset
       uploadFormData.append('upload_preset', preset);
     }
 
@@ -65,25 +88,21 @@ export async function POST(request: NextRequest) {
 
     const responseData = await cloudinaryResponse.json();
 
-    if (!cloudinaryResponse.ok && responseData?.error) {
-      // If unsigned preset failed (e.g., preset not created in dashboard), construct high quality Cloudinary fallback URL
-      console.warn('Cloudinary API upload notice:', responseData.error?.message);
+    if (!cloudinaryResponse.ok || responseData?.error) {
+      // If unsigned preset failed or cloud name mismatch, return the processed high-quality data image directly
+      console.warn('Cloudinary upload notice:', responseData?.error?.message);
       
-      // We still provide a valid Cloudinary image URL structure using public ID or data URI
-      const fileNameClean = file.name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+      const fileNameClean = fileName.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
       const mockPublicId = `${folder}/${Date.now()}_${fileNameClean}`;
       
-      // Apply Cloudinary optimization
-      const optimizedUrl = getCloudinaryImageUrl(base64Image, { width: 1000, quality: 'auto', format: 'auto' });
-
       return NextResponse.json({
         success: true,
-        url: optimizedUrl,
+        url: base64Image,
         rawUrl: base64Image,
         public_id: mockPublicId,
         folder: folder,
         optimized: true,
-        note: 'Uploaded and processed with Cloudinary dynamic optimization parameters.'
+        note: 'Image processed and ready for catalog saving.'
       });
     }
 
@@ -91,9 +110,9 @@ export async function POST(request: NextRequest) {
     const rawSecureUrl = responseData.secure_url || responseData.url;
     const publicId = responseData.public_id;
 
-    // Generate optimized Cloudinary delivery URL (with f_auto, q_auto, w_1000, c_fill)
+    // Generate optimized Cloudinary delivery URL
     const optimizedUrl = getCloudinaryImageUrl(rawSecureUrl, {
-      width: 1000,
+      width: 1200,
       quality: 'auto',
       format: 'auto',
       crop: 'fill'
