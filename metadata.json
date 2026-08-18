@@ -1,0 +1,8 @@
+{
+  "name": "KLLYEEIN Gadgets",
+  "description": "Modern, production-ready e-commerce platform built with Vite + React, TypeScript, Express, Supabase, Cloudinary, and Tailwind CSS.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
