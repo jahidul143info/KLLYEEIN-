@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { UserProfile } from '../types';
 
@@ -18,13 +18,15 @@ interface AuthContextType {
   isAdmin: boolean;
   adminCredentials: AdminCredentials;
   isLoading: boolean;
-  signInWithGoogle: () => Promise<void>;
-  signInWithEmail: (email: string) => Promise<void>;
-  signInWithPassword: (email: string, password: string) => Promise<{ error?: string }>;
-  updateAdminCredentials: (data: { email: string; password?: string; fullName?: string; currentPasswordConfirm?: string }) => Promise<{ success?: boolean; error?: string }>;
-  signOut: () => Promise<void>;
   isAuthModalOpen: boolean;
-  setIsAuthModalOpen: (open: boolean) => void;
+  authModalContext: 'general' | 'checkout';
+  setIsAuthModalOpen: (open: boolean, context?: 'general' | 'checkout') => void;
+  signInWithGoogle: (customEmail?: string, customName?: string) => Promise<{ error?: string }>;
+  signInWithPassword: (email: string, pass: string) => Promise<{ error?: string }>;
+  signUpWithPassword: (fullName: string, email: string, pass: string) => Promise<{ error?: string }>;
+  updateAdminCredentials: (data: { email: string; password?: string; fullName?: string }) => Promise<{ success?: boolean; error?: string }>;
+  signOut: () => Promise<void>;
+  requireAuthForCheckout: (proceedToCheckout: () => void) => void;
   isSupabaseConfigured: boolean;
 }
 
@@ -33,7 +35,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children?: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpenState] = useState(false);
+  const [authModalContext, setAuthModalContext] = useState<'general' | 'checkout'>('general');
+  const [pendingCheckoutCallback, setPendingCheckoutCallback] = useState<(() => void) | null>(null);
 
   const [adminCredentials, setAdminCredentials] = useState<AdminCredentials>(() => {
     if (typeof window !== 'undefined') {
@@ -61,20 +65,55 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
       : 'customer';
   };
 
+  // Helper to open auth modal with optional context
+  const setIsAuthModalOpen = (open: boolean, context: 'general' | 'checkout' = 'general') => {
+    setAuthModalContext(context);
+    setIsAuthModalOpenState(open);
+    if (!open) {
+      setPendingCheckoutCallback(null);
+    }
+  };
+
+  // Trigger pending checkout if one was waiting
+  const handleAuthSuccess = useCallback((authedUser: UserProfile) => {
+    setUser(authedUser);
+    localStorage.setItem('kllyeein_user', JSON.stringify(authedUser));
+    setIsAuthModalOpenState(false);
+
+    if (pendingCheckoutCallback) {
+      const callback = pendingCheckoutCallback;
+      setPendingCheckoutCallback(null);
+      setTimeout(() => {
+        callback();
+      }, 100);
+    }
+  }, [pendingCheckoutCallback]);
+
+  // Initial Auth Check
   useEffect(() => {
-    // Check saved session or Supabase session
     if (isSupabaseConfigured && supabase) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session?.user) {
           const email = session.user.email || 'user@kllyeein.com';
           const isAdm = getRoleFromEmail(email) === 'admin';
-          setUser({
+          const userObj: UserProfile = {
             id: session.user.id,
             email,
             fullName: session.user.user_metadata?.full_name || (isAdm ? adminCredentials.fullName : email.split('@')[0]),
             avatarUrl: session.user.user_metadata?.avatar_url,
-            role: isAdm ? 'admin' : 'customer'
-          });
+            role: isAdm ? 'admin' : 'customer',
+          };
+          setUser(userObj);
+        } else {
+          // Check local persistence
+          const savedUser = localStorage.getItem('kllyeein_user');
+          if (savedUser) {
+            try {
+              setUser(JSON.parse(savedUser));
+            } catch {
+              setUser(null);
+            }
+          }
         }
         setIsLoading(false);
       });
@@ -83,100 +122,99 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
         if (session?.user) {
           const email = session.user.email || 'user@kllyeein.com';
           const isAdm = getRoleFromEmail(email) === 'admin';
-          setUser({
+          const userObj: UserProfile = {
             id: session.user.id,
             email,
             fullName: session.user.user_metadata?.full_name || (isAdm ? adminCredentials.fullName : email.split('@')[0]),
             avatarUrl: session.user.user_metadata?.avatar_url,
-            role: isAdm ? 'admin' : 'customer'
-          });
-        } else {
-          // Check if local demo login exists
-          const savedUser = localStorage.getItem('kllyeein_user');
-          if (savedUser) {
-            try {
-              setUser(JSON.parse(savedUser));
-            } catch {
-              setUser(null);
-            }
-          } else {
-            setUser(null);
-          }
+            role: isAdm ? 'admin' : 'customer',
+          };
+          setUser(userObj);
+          localStorage.setItem('kllyeein_user', JSON.stringify(userObj));
         }
         setIsLoading(false);
       });
 
       return () => subscription.unsubscribe();
     } else {
-      // Local demo guest check
+      // Local demo persistence check
       const savedUser = localStorage.getItem('kllyeein_user');
       if (savedUser) {
         try {
           setUser(JSON.parse(savedUser));
-        } catch (e) {
-          console.error(e);
+        } catch {
+          setUser(null);
         }
       }
       setIsLoading(false);
     }
   }, [adminCredentials.email]);
 
-  const signInWithGoogle = async () => {
-    if (isSupabaseConfigured && supabase) {
-      await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/`
-        }
-      });
-    } else {
-      // Mock Google Login for local demo mode
-      const mockUser: UserProfile = {
-        id: 'user-google-101',
-        email: 'customer.member@kllyeein.com',
-        fullName: 'VIP Customer',
-        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200',
-        role: 'customer'
-      };
-      setUser(mockUser);
-      localStorage.setItem('kllyeein_user', JSON.stringify(mockUser));
-      setIsAuthModalOpen(false);
+  // Google Sign In (Direct Gmail or OAuth)
+  const signInWithGoogle = async (customEmail?: string, customName?: string): Promise<{ error?: string }> => {
+    const gmail = customEmail?.trim() || 'customer.google@gmail.com';
+    const name = customName?.trim() || gmail.split('@')[0];
+
+    if (isSupabaseConfigured && supabase && !customEmail) {
+      try {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/` : undefined,
+          },
+        });
+        if (error) throw error;
+        return {};
+      } catch (err: any) {
+        console.warn('Supabase OAuth notice, using direct Google profile:', err.message);
+      }
     }
+
+    // Direct Google Profile Authentication (Instant 1-Click for user's Gmail)
+    const isAdm = getRoleFromEmail(gmail) === 'admin';
+    const authedUser: UserProfile = {
+      id: `google-${Date.now()}`,
+      email: gmail,
+      fullName: name,
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(gmail)}`,
+      role: isAdm ? 'admin' : 'customer',
+    };
+
+    handleAuthSuccess(authedUser);
+    return {};
   };
 
-  const signInWithEmail = async (email: string) => {
-    if (isSupabaseConfigured && supabase) {
-      await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/`
-        }
-      });
-    } else {
-      const isAdm = getRoleFromEmail(email) === 'admin';
-      const mockUser: UserProfile = {
-        id: isAdm ? 'admin-osman' : `user-${Date.now()}`,
-        email,
-        fullName: isAdm ? adminCredentials.fullName : email.split('@')[0],
-        role: isAdm ? 'admin' : 'customer'
-      };
-      setUser(mockUser);
-      localStorage.setItem('kllyeein_user', JSON.stringify(mockUser));
-      setIsAuthModalOpen(false);
-    }
-  };
-
+  // Password Sign In
   const signInWithPassword = async (email: string, pass: string): Promise<{ error?: string }> => {
     const trimmedEmail = email.trim().toLowerCase();
-    const isAdminEmail = trimmedEmail === adminCredentials.email.toLowerCase() || trimmedEmail === DEFAULT_ADMIN_EMAIL.toLowerCase();
-    const isAdminPassword = pass === (adminCredentials.password || DEFAULT_ADMIN_PASSWORD) || pass === DEFAULT_ADMIN_PASSWORD;
-    const isAdminCredentials = isAdminEmail && isAdminPassword;
+    const trimmedPass = pass.trim();
 
+    if (!trimmedEmail || !trimmedPass) {
+      return { error: 'Please enter both email and password.' };
+    }
+
+    const isAdminEmail = trimmedEmail === adminCredentials.email.toLowerCase() || trimmedEmail === DEFAULT_ADMIN_EMAIL.toLowerCase();
+    const isAdminPassword = trimmedPass === (adminCredentials.password || DEFAULT_ADMIN_PASSWORD) || trimmedPass === DEFAULT_ADMIN_PASSWORD;
+
+    // Check if Administrator
+    if (isAdminEmail && isAdminPassword) {
+      const adminUser: UserProfile = {
+        id: 'admin-osman',
+        email: adminCredentials.email,
+        fullName: adminCredentials.fullName,
+        avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200',
+        role: 'admin',
+      };
+      handleAuthSuccess(adminUser);
+      return {};
+    }
+
+    // Check Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: trimmedEmail,
-          password: pass,
+          password: trimmedPass,
         });
 
         if (!error && data?.user) {
@@ -188,53 +226,120 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
             fullName: data.user.user_metadata?.full_name || (isAdm ? adminCredentials.fullName : userEmail.split('@')[0]),
             role: isAdm ? 'admin' : 'customer',
           };
-          setUser(authedUser);
-          localStorage.setItem('kllyeein_user', JSON.stringify(authedUser));
-          setIsAuthModalOpen(false);
+          handleAuthSuccess(authedUser);
           return {};
         }
-      } catch (err) {
-        console.error('Supabase password auth error:', err);
+      } catch (err: any) {
+        console.warn('Supabase signin notice:', err.message);
       }
     }
 
-    // Fallback credential check for Admin
-    if (isAdminCredentials) {
-      const adminUser: UserProfile = {
-        id: 'admin-osman',
-        email: adminCredentials.email,
-        fullName: adminCredentials.fullName,
-        avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200',
-        role: 'admin',
-      };
-      setUser(adminUser);
-      localStorage.setItem('kllyeein_user', JSON.stringify(adminUser));
-      setIsAuthModalOpen(false);
-      return {};
+    // Check registered users in local storage
+    if (typeof window !== 'undefined') {
+      const storedUsersRaw = localStorage.getItem('kllyeein_registered_users');
+      if (storedUsersRaw) {
+        try {
+          const storedUsers: Array<{ email: string; password?: string; fullName: string }> = JSON.parse(storedUsersRaw);
+          const found = storedUsers.find((u) => u.email.toLowerCase() === trimmedEmail);
+          if (found) {
+            if (found.password && found.password !== trimmedPass) {
+              return { error: 'Incorrect password. Please try again.' };
+            }
+            const authedUser: UserProfile = {
+              id: `user-${Date.now()}`,
+              email: found.email,
+              fullName: found.fullName,
+              role: getRoleFromEmail(found.email),
+            };
+            handleAuthSuccess(authedUser);
+            return {};
+          }
+        } catch {
+          // ignore
+        }
+      }
     }
 
-    // If regular customer password login in local mode
-    if (trimmedEmail && pass) {
-      const customerUser: UserProfile = {
-        id: `user-${Date.now()}`,
-        email: trimmedEmail,
-        fullName: trimmedEmail.split('@')[0],
-        role: 'customer',
-      };
-      setUser(customerUser);
-      localStorage.setItem('kllyeein_user', JSON.stringify(customerUser));
-      setIsAuthModalOpen(false);
-      return {};
-    }
-
-    return { error: 'Invalid login credentials. Please verify your email and password.' };
+    // Customer sign-in (Instant fallback account generation)
+    const customerUser: UserProfile = {
+      id: `user-${Date.now()}`,
+      email: trimmedEmail,
+      fullName: trimmedEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+      role: 'customer',
+    };
+    handleAuthSuccess(customerUser);
+    return {};
   };
 
+  // Sign Up / Create New Account
+  const signUpWithPassword = async (fullName: string, email: string, pass: string): Promise<{ error?: string }> => {
+    const cleanName = fullName.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPass = pass.trim();
+
+    if (!cleanName) {
+      return { error: 'Please enter your full name.' };
+    }
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { error: 'Please enter a valid email address.' };
+    }
+    if (cleanPass.length < 6) {
+      return { error: 'Password must be at least 6 characters.' };
+    }
+
+    // If Supabase is configured, create Supabase user
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: cleanPass,
+          options: {
+            data: {
+              full_name: cleanName,
+            },
+          },
+        });
+
+        if (error) {
+          console.warn('Supabase sign up warning:', error.message);
+        }
+      } catch (err: any) {
+        console.warn('Supabase signup exception:', err.message);
+      }
+    }
+
+    // Store in local registered users pool
+    if (typeof window !== 'undefined') {
+      try {
+        const existingUsers = JSON.parse(localStorage.getItem('kllyeein_registered_users') || '[]');
+        existingUsers.push({
+          email: cleanEmail,
+          password: cleanPass,
+          fullName: cleanName,
+          createdAt: new Date().toISOString(),
+        });
+        localStorage.setItem('kllyeein_registered_users', JSON.stringify(existingUsers));
+      } catch {
+        // ignore
+      }
+    }
+
+    const newUser: UserProfile = {
+      id: `user-${Date.now()}`,
+      email: cleanEmail,
+      fullName: cleanName,
+      role: getRoleFromEmail(cleanEmail),
+    };
+
+    handleAuthSuccess(newUser);
+    return {};
+  };
+
+  // Update Admin Credentials
   const updateAdminCredentials = async (data: {
     email: string;
     password?: string;
     fullName?: string;
-    currentPasswordConfirm?: string;
   }): Promise<{ success?: boolean; error?: string }> => {
     try {
       const newEmail = data.email.trim().toLowerCase();
@@ -245,27 +350,6 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
       const newFullName = data.fullName?.trim() || adminCredentials.fullName || 'Admin';
       const newPassword = data.password ? data.password.trim() : (adminCredentials.password || DEFAULT_ADMIN_PASSWORD);
 
-      // If updating with Supabase
-      if (isSupabaseConfigured && supabase) {
-        try {
-          const updatePayload: any = {
-            email: newEmail,
-            data: { full_name: newFullName },
-          };
-          if (data.password && data.password.trim().length >= 6) {
-            updatePayload.password = data.password.trim();
-          }
-
-          const { error: supaErr } = await supabase.auth.updateUser(updatePayload);
-          if (supaErr) {
-            console.warn('Supabase auth update note:', supaErr.message);
-          }
-        } catch (supaEx) {
-          console.warn('Supabase auth update exception:', supaEx);
-        }
-      }
-
-      // Update state and persistence
       const updatedCreds: AdminCredentials = {
         email: newEmail,
         password: newPassword,
@@ -275,7 +359,6 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
       setAdminCredentials(updatedCreds);
       localStorage.setItem('kllyeein_admin_credentials', JSON.stringify(updatedCreds));
 
-      // Also update currently active user profile if user is admin
       if (user && user.role === 'admin') {
         const updatedUser: UserProfile = {
           ...user,
@@ -292,6 +375,7 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
     }
   };
 
+  // Sign Out
   const signOut = async () => {
     if (isSupabaseConfigured && supabase) {
       try {
@@ -302,6 +386,18 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
     }
     setUser(null);
     localStorage.removeItem('kllyeein_user');
+  };
+
+  // Checkout Authentication Gate
+  const requireAuthForCheckout = (proceedToCheckout: () => void) => {
+    if (user) {
+      // User is already logged in -> proceed directly
+      proceedToCheckout();
+    } else {
+      // User is not logged in -> hold callback and prompt AuthModal
+      setPendingCheckoutCallback(() => proceedToCheckout);
+      setIsAuthModalOpen(true, 'checkout');
+    }
   };
 
   const isAdmin = Boolean(
@@ -315,14 +411,16 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
         isAdmin,
         adminCredentials,
         isLoading,
+        isAuthModalOpen,
+        authModalContext,
+        setIsAuthModalOpen,
         signInWithGoogle,
-        signInWithEmail,
         signInWithPassword,
+        signUpWithPassword,
         updateAdminCredentials,
         signOut,
-        isAuthModalOpen,
-        setIsAuthModalOpen,
-        isSupabaseConfigured
+        requireAuthForCheckout,
+        isSupabaseConfigured,
       }}
     >
       {children}
@@ -337,4 +435,3 @@ export function useAuth() {
   }
   return context;
 }
-

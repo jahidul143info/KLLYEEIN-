@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCart } from '../../context/CartContext';
+import { useAuth } from '../../context/AuthContext';
 import { ShoppingBag, Trash2, Plus, Minus, ArrowRight, ArrowLeft, Tag } from 'lucide-react';
 import CheckoutModal from '../../components/CheckoutModal';
 
@@ -20,12 +21,19 @@ export default function CartPage() {
     promoError
   } = useCart();
 
+  const { requireAuthForCheckout } = useAuth();
   const [inputCode, setInputCode] = useState('');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
   const handleApply = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputCode) applyPromoCode(inputCode);
+  };
+
+  const handleProceedToCheckout = () => {
+    requireAuthForCheckout(() => {
+      setIsCheckoutOpen(true);
+    });
   };
 
   return (
@@ -166,8 +174,8 @@ export default function CartPage() {
             </div>
 
             <button
-              onClick={() => setIsCheckoutOpen(true)}
-              className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-400 via-cyan-500 to-purple-600 text-black font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg hover:opacity-95"
+              onClick={handleProceedToCheckout}
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-400 via-cyan-500 to-purple-600 text-black font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg hover:opacity-95 cursor-pointer"
             >
               <span>Proceed To Checkout</span>
               <ArrowRight className="w-4 h-4" />

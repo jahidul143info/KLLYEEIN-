@@ -42,7 +42,7 @@ export default function Navbar() {
             <Link to="/" className="flex items-center gap-2.5 group shrink-0">
               <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl overflow-hidden border border-white/20 shadow-[0_0_20px_rgba(0,242,254,0.25)] group-hover:shadow-[0_0_30px_rgba(0,242,254,0.5)] group-hover:border-cyan-400/80 transition-all bg-black flex items-center justify-center">
                 <img
-                  src="https://res.cloudinary.com/pgggwtrz/image/upload/v1787039659/WhatsApp_Image_2026-08-18_at_1.53.57_PM_g4na9f.jpg"
+                  src="https://res.cloudinary.com/pgggwtrz/image/upload/v1787039981/photo_2026-08-18_13-58-01_j0havk.jpg"
                   alt="KLLYEEIN Logo"
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                 />
@@ -143,7 +143,7 @@ export default function Navbar() {
                 >
                   <div className="w-9 h-9 rounded-xl overflow-hidden border border-white/20 shadow-md bg-black flex items-center justify-center">
                     <img
-                      src="https://res.cloudinary.com/pgggwtrz/image/upload/v1787039659/WhatsApp_Image_2026-08-18_at_1.53.57_PM_g4na9f.jpg"
+                      src="https://res.cloudinary.com/pgggwtrz/image/upload/v1787039981/photo_2026-08-18_13-58-01_j0havk.jpg"
                       alt="KLLYEEIN Logo"
                       className="w-full h-full object-cover"
                     />
@@ -264,6 +264,22 @@ export default function Navbar() {
                     <ChevronRight className="w-4 h-4 text-cyan-400" />
                   </Link>
                 )}
+
+                {/* Mobile Auth Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setIsAuthModalOpen(true);
+                  }}
+                  className="w-full mt-2 px-3.5 py-3 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 font-bold flex items-center justify-between transition-all border border-purple-500/30 cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-purple-400" />
+                    {user ? `Account (${user.fullName || user.email})` : 'Sign In / Register'}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-purple-400" />
+                </button>
               </nav>
             </div>
 

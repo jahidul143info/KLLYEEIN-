@@ -24,6 +24,13 @@ export default function CheckoutModal({ isOpen, onClose }: ModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
 
+  // Sync state if user logs in
+  React.useEffect(() => {
+    if (user?.fullName && !fullName) {
+      setFullName(user.fullName);
+    }
+  }, [user, isOpen]);
+
   if (!isOpen) return null;
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
@@ -39,7 +46,8 @@ export default function CheckoutModal({ isOpen, onClose }: ModalProps) {
           totalPrice,
           paymentMethod,
           shippingAddress: { fullName, phone, address, city },
-          trxId
+          trxId,
+          userEmail: user?.email || 'customer@gmail.com'
         })
       });
 
@@ -107,6 +115,17 @@ export default function CheckoutModal({ isOpen, onClose }: ModalProps) {
               </h3>
               <p className="text-xs text-gray-400">Enter delivery address & payment details.</p>
             </div>
+
+            {/* Customer Status Badge */}
+            {user && (
+              <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
+                  <span className="text-gray-300">Ordering as: <strong className="text-white">{user.fullName || user.email}</strong></span>
+                </div>
+                <span className="text-[10px] text-cyan-300 font-mono">{user.email}</span>
+              </div>
+            )}
 
             {/* Total Badge */}
             <div className="p-3 rounded-2xl bg-surface/80 border border-white/10 flex items-center justify-between text-xs">

@@ -72,7 +72,7 @@ export default function Footer() {
           <Link to="/" className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl overflow-hidden border border-white/20 shadow-md bg-black flex items-center justify-center">
               <img
-                src="https://res.cloudinary.com/pgggwtrz/image/upload/v1787039659/WhatsApp_Image_2026-08-18_at_1.53.57_PM_g4na9f.jpg"
+                src="https://res.cloudinary.com/pgggwtrz/image/upload/v1787039981/photo_2026-08-18_13-58-01_j0havk.jpg"
                 alt="KLLYEEIN Logo"
                 className="w-full h-full object-cover"
               />
