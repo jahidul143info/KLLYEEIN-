@@ -2,28 +2,54 @@
 
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { X, Mail, ShieldCheck, Zap, User, LogOut, PackageCheck, Award, ChevronRight } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { X, Mail, ShieldCheck, Zap, User, LogOut, PackageCheck, Award, ChevronRight, Lock, KeyRound } from 'lucide-react';
+import { useAuth, DEFAULT_ADMIN_EMAIL } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 
 export default function AuthModal() {
-  const { user, isAuthModalOpen, setIsAuthModalOpen, signInWithGoogle, signInWithEmail, signOut, isSupabaseConfigured } = useAuth();
+  const { user, isAdmin, isAuthModalOpen, setIsAuthModalOpen, signInWithGoogle, signInWithEmail, signInWithPassword, signOut, isSupabaseConfigured } = useAuth();
   const { setIsCartOpen } = useCart();
+  
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authMode, setAuthMode] = useState<'password' | 'otp'>('password');
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sentMessage, setSentMessage] = useState('');
 
   if (!isAuthModalOpen) return null;
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
+  const handlePasswordAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) return;
+    setLoading(true);
+    setErrorMessage(null);
+    try {
+      const res = await signInWithPassword(email, password);
+      if (res?.error) {
+        setErrorMessage(res.error);
+      } else {
+        setIsAuthModalOpen(false);
+        setEmail('');
+        setPassword('');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailOtpAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
     setLoading(true);
+    setErrorMessage(null);
     try {
       await signInWithEmail(email);
-      setSentMessage(`Check your inbox (${email}) for login link or signed in demo session!`);
-    } catch (e) {
-      console.error(e);
+      setSentMessage(`Check your inbox (${email}) for login link or signed in session!`);
+    } catch (e: any) {
+      setErrorMessage(e.message || 'Failed to send OTP link');
     } finally {
       setLoading(false);
     }
@@ -35,7 +61,11 @@ export default function AuthModal() {
         
         {/* Close Button */}
         <button
-          onClick={() => setIsAuthModalOpen(false)}
+          onClick={() => {
+            setIsAuthModalOpen(false);
+            setErrorMessage(null);
+            setSentMessage('');
+          }}
           className="absolute top-4 right-4 p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
           aria-label="Close Profile Modal"
         >
@@ -57,7 +87,7 @@ export default function AuthModal() {
               </div>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-bold uppercase tracking-wider">
                 <Award className="w-3.5 h-3.5 text-cyan-400" />
-                <span>KLLYEEIN VIP MEMBER</span>
+                <span>{isAdmin ? 'AUTHORIZED ADMINISTRATOR' : 'KLLYEEIN VIP MEMBER'}</span>
               </div>
             </div>
 
@@ -68,36 +98,39 @@ export default function AuthModal() {
                   setIsAuthModalOpen(false);
                   setIsCartOpen(true);
                 }}
-                className="w-full p-3.5 rounded-2xl bg-surface/80 border border-white/10 hover:border-cyan-400/50 flex items-center justify-between text-xs font-semibold text-white transition-all group"
+                className="w-full p-3.5 rounded-2xl bg-surface/80 border border-white/10 hover:border-cyan-400/50 flex items-center justify-between text-xs font-semibold text-white transition-all group cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400">
                     <PackageCheck className="w-4 h-4" />
                   </div>
-                  <span>My Cart & Checkout</span>
+                  <span>My Cart & Orders</span>
                 </div>
                 <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-cyan-400 transition-colors" />
               </button>
 
-              <Link
-                to="/admin"
-                onClick={() => setIsAuthModalOpen(false)}
-                className="w-full p-3.5 rounded-2xl bg-surface/80 border border-white/10 hover:border-purple-400/50 flex items-center justify-between text-xs font-semibold text-white transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
-                    <ShieldCheck className="w-4 h-4" />
+              {/* Admin Panel Button ONLY for Authenticated Admin */}
+              {isAdmin && (
+                <Link
+                  to="/admin"
+                  onClick={() => setIsAuthModalOpen(false)}
+                  className="w-full p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 hover:border-cyan-400 flex items-center justify-between text-xs font-bold text-cyan-300 transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <span>Access Admin Control Panel</span>
                   </div>
-                  <span>Admin Control Panel</span>
-                </div>
-                <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-purple-400 transition-colors" />
-              </Link>
+                  <ChevronRight className="w-4 h-4 text-cyan-400 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              )}
             </div>
 
             {/* Delivery Info */}
             <div className="p-3.5 rounded-2xl bg-surface/50 border border-white/5 space-y-1 text-xs">
               <p className="text-gray-400 text-[11px] font-semibold">Bangladesh Delivery Status:</p>
-              <p className="text-cyan-300 font-bold">Express 24-48 Hours Active</p>
+              <p className="text-cyan-300 font-bold">Express 24-48 Hours Active Nationwide</p>
             </div>
 
             {/* Sign Out Button */}
@@ -106,41 +139,53 @@ export default function AuthModal() {
                 await signOut();
                 setIsAuthModalOpen(false);
               }}
-              className="w-full py-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+              className="w-full py-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
               <span>Sign Out Account</span>
             </button>
           </div>
         ) : sentMessage ? (
-          <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs text-center space-y-3">
+          <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs text-center space-y-4">
             <p className="font-bold">{sentMessage}</p>
             <button
-              onClick={() => setIsAuthModalOpen(false)}
-              className="px-6 py-2 rounded-xl bg-emerald-400 text-black font-bold text-xs uppercase"
+              onClick={() => {
+                setIsAuthModalOpen(false);
+                setSentMessage('');
+              }}
+              className="px-6 py-2.5 rounded-xl bg-emerald-400 text-black font-bold text-xs uppercase cursor-pointer"
             >
-              Done
+              Close
             </button>
           </div>
         ) : (
           /* Login View when logged out */
-          <div className="space-y-6">
+          <div className="space-y-5">
             {/* Header */}
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-400 to-purple-600 p-[1px] mx-auto shadow-lg shadow-purple-500/20">
-                <div className="w-full h-full bg-[#090a0f] rounded-[15px] flex items-center justify-center">
-                  <Zap className="w-6 h-6 text-cyan-400" />
-                </div>
+              <div className="w-14 h-14 rounded-2xl overflow-hidden border border-white/20 shadow-lg shadow-cyan-500/20 mx-auto bg-black flex items-center justify-center">
+                <img
+                  src="https://res.cloudinary.com/pgggwtrz/image/upload/v1787039659/WhatsApp_Image_2026-08-18_at_1.53.57_PM_g4na9f.jpg"
+                  alt="KLLYEEIN Logo"
+                  className="w-full h-full object-cover"
+                />
               </div>
-              <h3 className="text-xl font-bold text-white font-mono">VIP CYBER LOGIN</h3>
-              <p className="text-xs text-gray-400">Sign in to track orders, save cart, & access VIP perks.</p>
+              <h3 className="text-lg font-bold text-white font-mono">ACCOUNT SIGN IN</h3>
+              <p className="text-xs text-gray-400">Sign in to track orders, save items, & manage your profile.</p>
             </div>
+
+            {errorMessage && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs text-center font-medium">
+                {errorMessage}
+              </div>
+            )}
 
             <div className="space-y-4">
               {/* Google OAuth Button */}
               <button
                 onClick={signInWithGoogle}
-                className="w-full py-3.5 px-4 rounded-2xl bg-white text-gray-900 font-bold text-xs flex items-center justify-center gap-3 hover:bg-gray-100 transition-all shadow-lg cursor-pointer"
+                type="button"
+                className="w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-gray-100 text-gray-900 font-bold text-xs flex items-center justify-center gap-3 transition-all shadow-lg cursor-pointer"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
@@ -165,35 +210,90 @@ export default function AuthModal() {
 
               <div className="flex items-center gap-2 text-[10px] text-gray-500 font-bold uppercase tracking-wider my-2">
                 <div className="flex-1 h-[1px] bg-white/10" />
-                <span>or email magic link</span>
+                <span>or sign in with email</span>
                 <div className="flex-1 h-[1px] bg-white/10" />
               </div>
 
-              {/* Email Form */}
-              <form onSubmit={handleEmailAuth} className="space-y-3">
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="email"
-                    required
-                    placeholder="Enter your email address"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 rounded-2xl bg-surface border border-white/15 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-purple-400"
-                  />
-                </div>
-
+              {/* Login Tabs */}
+              <div className="flex p-1 rounded-xl bg-black/40 border border-white/10 text-xs">
                 <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-black font-extrabold text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
+                  type="button"
+                  onClick={() => setAuthMode('password')}
+                  className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${authMode === 'password' ? 'bg-cyan-500 text-black' : 'text-gray-400 hover:text-white'}`}
                 >
-                  {loading ? 'Sending OTP...' : 'Send Magic OTP Link'}
+                  Password
                 </button>
-              </form>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode('otp')}
+                  className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${authMode === 'otp' ? 'bg-cyan-500 text-black' : 'text-gray-400 hover:text-white'}`}
+                >
+                  Magic OTP Link
+                </button>
+              </div>
+
+              {/* Password Form */}
+              {authMode === 'password' ? (
+                <form onSubmit={handlePasswordAuth} className="space-y-3">
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="Email address"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-surface border border-white/15 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      required
+                      placeholder="Password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-surface border border-white/15 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-400 to-purple-600 hover:opacity-90 text-black font-extrabold text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {loading ? 'Authenticating...' : 'Sign In'}
+                  </button>
+                </form>
+              ) : (
+                /* OTP Form */
+                <form onSubmit={handleEmailOtpAuth} className="space-y-3">
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="Enter your email address"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-surface border border-white/15 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 hover:opacity-90 text-black font-extrabold text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
+                  >
+                    {loading ? 'Sending Link...' : 'Send Magic OTP Link'}
+                  </button>
+                </form>
+              )}
 
               <p className="text-[10px] text-gray-500 text-center">
-                {isSupabaseConfigured ? 'Connected to Supabase Auth Service' : 'Demo Mode Active (Supabase ready)'}
+                {isSupabaseConfigured ? 'Secured by Supabase Authentication' : 'Live System Ready'}
               </p>
             </div>
           </div>
@@ -203,4 +303,5 @@ export default function AuthModal() {
     </div>
   );
 }
+
 

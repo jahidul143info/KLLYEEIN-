@@ -2,7 +2,11 @@
  * Helper utility to build Cloudinary optimized image URLs with dynamic transformations
  */
 
-const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'kllyeein-gadgets';
+const cloudName = 
+  process.env.VITE_CLOUDINARY_CLOUD_NAME || 
+  process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 
+  process.env.CLOUDINARY_CLOUD_NAME || 
+  'kllyeein-gadgets';
 
 export interface CloudinaryTransformOptions {
   width?: number;

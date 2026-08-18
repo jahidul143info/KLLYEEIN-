@@ -231,7 +231,11 @@ async function startServer() {
 
       const timestamp = Math.floor(Date.now() / 1000).toString();
 
-      const CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'kllyeein-gadgets';
+      const CLOUD_NAME = 
+        process.env.VITE_CLOUDINARY_CLOUD_NAME || 
+        process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 
+        process.env.CLOUDINARY_CLOUD_NAME || 
+        'kllyeein-gadgets';
       const API_KEY = process.env.CLOUDINARY_API_KEY;
       const API_SECRET = process.env.CLOUDINARY_API_SECRET;
 

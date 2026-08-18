@@ -18,13 +18,46 @@ import {
   ArrowLeft,
   Tag,
   ShieldCheck,
+  ShieldAlert,
   Zap,
+  Lock,
+  Mail,
+  KeyRound,
+  LogOut,
 } from 'lucide-react';
 import { Product, ProductSpec } from '../../types';
 import { getCloudinaryImageUrl } from '../../lib/cloudinary';
+import { useAuth, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from '../../context/AuthContext';
 
 export default function AdminPanelPage() {
-  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'banners'>('products');
+  const { user, isAdmin, adminCredentials, updateAdminCredentials, isLoading: isAuthLoading, signInWithGoogle, signInWithPassword, signOut, isSupabaseConfigured } = useAuth();
+  
+  // Admin Login Screen Form State
+  const [adminEmailInput, setAdminEmailInput] = useState(adminCredentials?.email || DEFAULT_ADMIN_EMAIL);
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [adminLoginError, setAdminLoginError] = useState<string | null>(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<'products' | 'categories' | 'banners' | 'security'>('products');
+  
+  // Admin Security Settings Form State
+  const [editAdminName, setEditAdminName] = useState(adminCredentials?.fullName || 'Osman (Admin)');
+  const [editAdminEmail, setEditAdminEmail] = useState(adminCredentials?.email || DEFAULT_ADMIN_EMAIL);
+  const [editAdminPassword, setEditAdminPassword] = useState('');
+  const [editAdminPasswordConfirm, setEditAdminPasswordConfirm] = useState('');
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [isSavingSecurity, setIsSavingSecurity] = useState(false);
+  const [securitySuccessMessage, setSecuritySuccessMessage] = useState<string | null>(null);
+  const [securityErrorMessage, setSecurityErrorMessage] = useState<string | null>(null);
+
+  // Sync state when adminCredentials changes
+  useEffect(() => {
+    if (adminCredentials) {
+      setEditAdminName(adminCredentials.fullName || 'Osman (Admin)');
+      setEditAdminEmail(adminCredentials.email || DEFAULT_ADMIN_EMAIL);
+      setAdminEmailInput(adminCredentials.email || DEFAULT_ADMIN_EMAIL);
+    }
+  }, [adminCredentials]);
   
   // Folder state for Cloudinary (defaulting behind the scenes)
   const [selectedFolder, setSelectedFolder] = useState<string>('kllyeein-gadgets/products');
@@ -243,6 +276,189 @@ export default function AdminPanelPage() {
     setTimeout(() => setCopiedUrl(null), 2500);
   };
 
+  // Admin Login Submit Handler
+  const handleAdminLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminEmailInput || !adminPasswordInput) return;
+    setIsAuthenticating(true);
+    setAdminLoginError(null);
+    try {
+      const res = await signInWithPassword(adminEmailInput, adminPasswordInput);
+      if (res?.error) {
+        setAdminLoginError(res.error);
+      } else {
+        // Successful login
+      }
+    } catch (err: any) {
+      setAdminLoginError(err.message || 'Admin login failed');
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  // Admin Security Update Handler
+  const handleSaveAdminSecurity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSecuritySuccessMessage(null);
+    setSecurityErrorMessage(null);
+
+    if (!editAdminEmail || !editAdminEmail.includes('@')) {
+      setSecurityErrorMessage('Please enter a valid administrator email address.');
+      return;
+    }
+
+    if (editAdminPassword) {
+      if (editAdminPassword.length < 6) {
+        setSecurityErrorMessage('New password must be at least 6 characters long.');
+        return;
+      }
+      if (editAdminPassword !== editAdminPasswordConfirm) {
+        setSecurityErrorMessage('New password and confirmation password do not match.');
+        return;
+      }
+    }
+
+    setIsSavingSecurity(true);
+    try {
+      const res = await updateAdminCredentials({
+        email: editAdminEmail,
+        fullName: editAdminName,
+        password: editAdminPassword || undefined,
+      });
+
+      if (res.error) {
+        setSecurityErrorMessage(res.error);
+      } else {
+        setSecuritySuccessMessage('Admin credentials updated successfully! You can now use these credentials to sign in.');
+        setEditAdminPassword('');
+        setEditAdminPasswordConfirm('');
+        setTimeout(() => setSecuritySuccessMessage(null), 5000);
+      }
+    } catch (err: any) {
+      setSecurityErrorMessage(err.message || 'Failed to update admin credentials.');
+    } finally {
+      setIsSavingSecurity(false);
+    }
+  };
+
+  // If user is not authenticated as admin, show secure Admin Login Gate
+  if (!isAdmin) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-[#0d0f18] border border-cyan-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <div className="w-16 h-16 rounded-2xl overflow-hidden border border-cyan-500/40 shadow-xl shadow-cyan-500/20 mx-auto bg-black flex items-center justify-center">
+              <img
+                src="https://res.cloudinary.com/pgggwtrz/image/upload/v1787039659/WhatsApp_Image_2026-08-18_at_1.53.57_PM_g4na9f.jpg"
+                alt="KLLYEEIN Logo"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-[10px] font-bold uppercase tracking-wider">
+              Restricted Admin Console
+            </div>
+            <h1 className="text-xl sm:text-2xl font-black text-white font-mono">ADMIN SIGN IN</h1>
+            <p className="text-xs text-gray-400">
+              Please authenticate with administrator credentials to access management controls.
+            </p>
+          </div>
+
+          {adminLoginError && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs text-center font-medium">
+              {adminLoginError}
+            </div>
+          )}
+
+          {/* Google Sign In Option */}
+          <div className="space-y-4">
+            <button
+              onClick={signInWithGoogle}
+              type="button"
+              className="w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-gray-100 text-gray-900 font-bold text-xs flex items-center justify-center gap-3 transition-all shadow-lg cursor-pointer"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>Sign in with Google Admin</span>
+            </button>
+
+            <div className="flex items-center gap-2 text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+              <div className="flex-1 h-[1px] bg-white/10" />
+              <span>or enter admin credentials</span>
+              <div className="flex-1 h-[1px] bg-white/10" />
+            </div>
+
+            {/* Email & Password Login */}
+            <form onSubmit={handleAdminLoginSubmit} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-gray-300">Admin Email</label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="email"
+                    required
+                    placeholder="admin.osman@gmail.com"
+                    value={adminEmailInput}
+                    onChange={(e) => setAdminEmailInput(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-surface border border-white/15 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-cyan-400 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-gray-300">Admin Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="password"
+                    required
+                    placeholder="••••••••"
+                    value={adminPasswordInput}
+                    onChange={(e) => setAdminPasswordInput(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-surface border border-white/15 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-cyan-400 font-mono"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isAuthenticating}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-400 to-purple-600 hover:opacity-90 text-black font-extrabold text-xs uppercase tracking-wider transition-all shadow-lg cursor-pointer flex items-center justify-center gap-2 mt-2"
+              >
+                {isAuthenticating ? 'Verifying Credentials...' : 'Unlock Admin Console'}
+              </button>
+            </form>
+
+            <div className="pt-2 text-center">
+              <Link
+                to="/"
+                className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" /> Return to Customer Storefront
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-w-0 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       {/* Top Header & Breadcrumb */}
@@ -258,23 +474,37 @@ export default function AdminPanelPage() {
           <h1 className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight flex items-center gap-3">
             KLLYEEIN Admin Panel
             <span className="text-xs px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-normal">
-              Cloudinary Powered
+              Live Catalog Manager
             </span>
           </h1>
           <p className="text-xs sm:text-sm text-gray-400 mt-1">
-            Upload images directly to Cloudinary folders and store optimized asset URLs in database.
+            Upload high-resolution media, manage real-time inventory, and configure store promotional assets.
           </p>
         </div>
 
-        {/* Cloudinary Environment Badge */}
-        <div className="p-3.5 rounded-xl bg-surface/80 border border-white/10 flex items-center gap-3 shrink-0">
-          <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
-            <Cloud className="w-5 h-5" />
+        {/* Store & Cloud Sync Status Badge + Admin Logout */}
+        <div className="flex items-center gap-3">
+          <div className="p-3.5 rounded-xl bg-surface/80 border border-white/10 flex items-center gap-3 shrink-0">
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 font-mono">Admin Session</div>
+              <div className="text-sm font-bold text-emerald-400 font-mono flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                {user?.fullName || 'Osman (Admin)'}
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="text-xs text-gray-400 font-mono">Cloud Name</div>
-            <div className="text-sm font-bold text-white font-mono">kllyeein-gadgets</div>
-          </div>
+
+          <button
+            onClick={signOut}
+            title="Sign Out Admin"
+            className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Logout</span>
+          </button>
         </div>
       </div>
 
@@ -320,6 +550,19 @@ export default function AdminPanelPage() {
           }`}
         >
           <ImageIcon className="w-4 h-4" /> Hero Banners
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('security');
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+            activeTab === 'security'
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-lg shadow-amber-500/10'
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <KeyRound className="w-4 h-4" /> Admin Security & Credentials
         </button>
       </div>
 
@@ -388,12 +631,12 @@ export default function AdminPanelPage() {
                   </div>
                 )}
 
-                {/* Uploaded Cloudinary Images Gallery Preview */}
+                {/* Uploaded Media Images Gallery Preview */}
                 {uploadedUrls.length > 0 && (
                   <div className="space-y-2 pt-2">
                     <span className="text-xs font-semibold text-cyan-400 flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      Uploaded Cloudinary Images ({uploadedUrls.length}):
+                      Uploaded Media Assets ({uploadedUrls.length}):
                     </span>
 
                     <div className="grid grid-cols-3 gap-3">
@@ -401,7 +644,7 @@ export default function AdminPanelPage() {
                         <div key={idx} className="relative group rounded-xl overflow-hidden border border-white/10 bg-black/40 aspect-square">
                           <img
                             src={url}
-                            alt={`Cloudinary upload ${idx}`}
+                            alt={`Product media ${idx + 1}`}
                             className="w-full h-full object-cover"
                           />
                           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
@@ -432,7 +675,7 @@ export default function AdminPanelPage() {
                 {recentUploadInfo && (
                   <div className="p-3 rounded-xl bg-black/40 border border-white/10 text-xs font-mono space-y-1 text-gray-300">
                     <div className="flex items-center justify-between text-cyan-400 font-bold">
-                      <span>Cloudinary Optimized URL Generated:</span>
+                      <span>Optimized Asset URL Generated:</span>
                       <button
                         type="button"
                         onClick={() => copyToClipboard(recentUploadInfo.url)}
@@ -663,9 +906,9 @@ export default function AdminPanelPage() {
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-gray-300 font-mono">
                           {prod.category}
                         </span>
-                        {prod.images[0]?.includes('res.cloudinary.com') && (
+                        {prod.images && prod.images.length > 0 && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono">
-                            Cloudinary
+                            HD Media
                           </span>
                         )}
                       </div>
@@ -743,59 +986,145 @@ export default function AdminPanelPage() {
         </div>
       )}
 
-      {/* TAB 3: BANNERS UPLOAD */}
-      {activeTab === 'banners' && (
-        <div className="max-w-2xl mx-auto space-y-6 p-6 rounded-2xl bg-surface/90 border border-white/10">
-          <div className="space-y-1">
-            <h2 className="text-lg font-bold text-white font-mono flex items-center gap-2">
-              <ImageIcon className="w-5 h-5 text-emerald-400" />
-              Upload Hero Banner Graphic
-            </h2>
-            <p className="text-xs text-gray-400">
-              Upload promotional campaign images and hero banners.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs text-gray-300 block mb-1">Banner Campaign Title</label>
-              <input
-                type="text"
-                placeholder="e.g. Eid Cyber Offer - 20% Off All Accessories"
-                value={bannerTitle}
-                onChange={(e) => setBannerTitle(e.target.value)}
-                className="w-full bg-black/50 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white"
-              />
-            </div>
-
-            <div className="border-2 border-dashed border-emerald-500/30 hover:border-emerald-400 rounded-2xl p-6 text-center bg-emerald-950/10 relative">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleFileUpload}
-                disabled={isUploading}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
-              <Upload className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-              <p className="text-sm font-semibold text-white">Click or drag & drop Hero Banner Graphic</p>
-              <p className="text-xs text-gray-400">Supports high-resolution PNG, JPG, WEBP</p>
-            </div>
-
-            {bannerImageUrl && (
-              <div className="space-y-2">
-                <p className="text-xs text-emerald-300 font-mono">Optimized Banner Preview:</p>
-                <div className="relative h-48 rounded-xl overflow-hidden border border-white/10">
-                  <img src={bannerImageUrl} alt="Banner Preview" className="w-full h-full object-cover" />
+      {/* TAB 4: ADMIN SECURITY & CREDENTIALS */}
+      {activeTab === 'security' && (
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div className="p-6 sm:p-8 rounded-3xl bg-surface/90 border border-amber-500/30 shadow-2xl space-y-6">
+            <div className="flex items-start justify-between gap-4 pb-5 border-b border-white/10">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[10px] font-bold uppercase tracking-wider">
+                  <ShieldCheck className="w-3.5 h-3.5" /> Access Control
                 </div>
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(bannerImageUrl)}
-                  className="w-full py-2 bg-emerald-500/20 text-emerald-300 rounded-xl text-xs font-bold"
-                >
-                  {copiedUrl === bannerImageUrl ? 'Copied URL!' : 'Copy Banner URL'}
-                </button>
+                <h2 className="text-xl font-bold text-white font-mono flex items-center gap-2">
+                  Admin Credentials & Password
+                </h2>
+                <p className="text-xs text-gray-400">
+                  Update your administrator email, name, and login password. These credentials will be used for logging into the Admin Control Panel.
+                </p>
+              </div>
+              <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-400 shrink-0">
+                <KeyRound className="w-6 h-6" />
+              </div>
+            </div>
+
+            {/* Notification Messages */}
+            {securitySuccessMessage && (
+              <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 font-medium animate-fadeIn">
+                <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
+                <span>{securitySuccessMessage}</span>
               </div>
             )}
+
+            {securityErrorMessage && (
+              <div className="p-4 rounded-2xl bg-red-950/60 border border-red-500/40 text-red-400 text-xs flex items-center gap-2 font-medium">
+                <ShieldAlert className="w-5 h-5 shrink-0 text-red-400" />
+                <span>{securityErrorMessage}</span>
+              </div>
+            )}
+
+            {/* Current Active Credentials Info */}
+            <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2 text-xs font-mono">
+              <div className="text-gray-400 text-[11px] font-sans font-semibold">Active Admin Account:</div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-gray-300">
+                <span>Email: <strong className="text-amber-300">{adminCredentials?.email || DEFAULT_ADMIN_EMAIL}</strong></span>
+                <span>Name: <strong className="text-white">{adminCredentials?.fullName || 'Osman (Admin)'}</strong></span>
+              </div>
+              <div className="text-[10px] text-gray-500 font-sans">
+                {isSupabaseConfigured ? 'Connected to Supabase Authentication' : 'Local Credential Engine Active'}
+              </div>
+            </div>
+
+            {/* Credentials Update Form */}
+            <form onSubmit={handleSaveAdminSecurity} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                  Admin Display Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Osman (Admin)"
+                  value={editAdminName}
+                  onChange={(e) => setEditAdminName(e.target.value)}
+                  className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-amber-400 transition-colors"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-amber-400" />
+                  Admin Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="admin.osman@gmail.com"
+                  value={editAdminEmail}
+                  onChange={(e) => setEditAdminEmail(e.target.value)}
+                  className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-amber-400 transition-colors font-mono"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-white/10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-amber-400" />
+                    Change Password (Optional)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword(!showEditPassword)}
+                    className="text-[11px] text-amber-400 hover:underline font-mono"
+                  >
+                    {showEditPassword ? 'Hide Password' : 'Show Password'}
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  <input
+                    type={showEditPassword ? 'text' : 'password'}
+                    placeholder="Enter new password (leave blank to keep current)"
+                    value={editAdminPassword}
+                    onChange={(e) => setEditAdminPassword(e.target.value)}
+                    className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-amber-400 transition-colors font-mono"
+                  />
+                  <p className="text-[10px] text-gray-500">Minimum 6 characters recommended.</p>
+                </div>
+
+                {editAdminPassword && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-300">Confirm New Password</label>
+                    <input
+                      type={showEditPassword ? 'text' : 'password'}
+                      required
+                      placeholder="Re-enter new password"
+                      value={editAdminPasswordConfirm}
+                      onChange={(e) => setEditAdminPasswordConfirm(e.target.value)}
+                      className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-amber-400 transition-colors font-mono"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSavingSecurity}
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-cyan-500 hover:opacity-90 text-black font-extrabold text-xs uppercase tracking-wider transition-all shadow-lg cursor-pointer flex items-center justify-center gap-2 mt-4"
+              >
+                {isSavingSecurity ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Updating Credentials...
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="w-4 h-4" />
+                    Save & Update Credentials
+                  </>
+                )}
+              </button>
+            </form>
           </div>
         </div>
       )}

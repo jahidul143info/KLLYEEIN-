@@ -69,11 +69,13 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 grid grid-cols-1 md:grid-cols-5 gap-8">
         {/* Brand info */}
         <div className="md:col-span-2 space-y-4">
-          <Link to="/" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 to-purple-600 p-[1px]">
-              <div className="w-full h-full bg-[#090a0f] rounded-[11px] flex items-center justify-center">
-                <Zap className="w-4 h-4 text-cyan-400 fill-cyan-400/20" />
-              </div>
+          <Link to="/" className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl overflow-hidden border border-white/20 shadow-md bg-black flex items-center justify-center">
+              <img
+                src="https://res.cloudinary.com/pgggwtrz/image/upload/v1787039659/WhatsApp_Image_2026-08-18_at_1.53.57_PM_g4na9f.jpg"
+                alt="KLLYEEIN Logo"
+                className="w-full h-full object-cover"
+              />
             </div>
             <span className="text-lg font-black tracking-tight text-white font-mono">KLLYEEIN</span>
           </Link>

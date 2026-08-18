@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
   const { totalItems, setIsCartOpen } = useCart();
-  const { user, setIsAuthModalOpen, signOut } = useAuth();
+  const { user, isAdmin, setIsAuthModalOpen, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -38,12 +38,14 @@ export default function Navbar() {
               <Menu className="w-5 h-5" />
             </button>
 
-            {/* Brand Logo without TECH badge or slogan */}
-            <Link to="/" className="flex items-center gap-2 group shrink-0">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-cyan-400 via-purple-600 to-indigo-600 p-[1px] shadow-[0_0_20px_rgba(0,242,254,0.3)] group-hover:shadow-[0_0_30px_rgba(0,242,254,0.6)] transition-all">
-                <div className="w-full h-full bg-[#090a0f] rounded-[11px] flex items-center justify-center">
-                  <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 fill-cyan-400/20 group-hover:scale-110 transition-transform" />
-                </div>
+            {/* Brand Logo with Official Website Logo */}
+            <Link to="/" className="flex items-center gap-2.5 group shrink-0">
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl overflow-hidden border border-white/20 shadow-[0_0_20px_rgba(0,242,254,0.25)] group-hover:shadow-[0_0_30px_rgba(0,242,254,0.5)] group-hover:border-cyan-400/80 transition-all bg-black flex items-center justify-center">
+                <img
+                  src="https://res.cloudinary.com/pgggwtrz/image/upload/v1787039659/WhatsApp_Image_2026-08-18_at_1.53.57_PM_g4na9f.jpg"
+                  alt="KLLYEEIN Logo"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                />
               </div>
               <span className="text-lg sm:text-xl font-black tracking-tight text-white font-mono">
                 KLLYEEIN
@@ -72,10 +74,12 @@ export default function Navbar() {
               <Cpu className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
               AI Advisor
             </a>
-            <Link to="/admin" className="hover:text-cyan-300 transition-all flex items-center gap-1 text-cyan-400 font-bold bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/20">
-              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-              Admin
-            </Link>
+            {isAdmin && (
+              <Link to="/admin" className="hover:text-cyan-300 transition-all flex items-center gap-1 text-cyan-400 font-bold bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/20">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                Admin
+              </Link>
+            )}
           </nav>
 
           {/* Right Actions */}
@@ -135,12 +139,14 @@ export default function Navbar() {
                 <Link
                   to="/"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2.5"
                 >
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-400 to-purple-600 p-[1px]">
-                    <div className="w-full h-full bg-[#090a0f] rounded-[11px] flex items-center justify-center">
-                      <Zap className="w-4 h-4 text-cyan-400 fill-cyan-400/20" />
-                    </div>
+                  <div className="w-9 h-9 rounded-xl overflow-hidden border border-white/20 shadow-md bg-black flex items-center justify-center">
+                    <img
+                      src="https://res.cloudinary.com/pgggwtrz/image/upload/v1787039659/WhatsApp_Image_2026-08-18_at_1.53.57_PM_g4na9f.jpg"
+                      alt="KLLYEEIN Logo"
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                   <span className="text-base font-black tracking-tight text-white font-mono">
                     KLLYEEIN
@@ -245,17 +251,19 @@ export default function Navbar() {
                   </span>
                   <ChevronRight className="w-4 h-4 text-gray-500" />
                 </a>
-                <Link
-                  to="/admin"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="px-3.5 py-3 rounded-xl bg-cyan-500/10 text-cyan-400 font-bold flex items-center justify-between transition-all border border-cyan-500/20 mt-2"
-                >
-                  <span className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                    Admin Control Panel
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-cyan-400" />
-                </Link>
+                {isAdmin && (
+                  <Link
+                    to="/admin"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="px-3.5 py-3 rounded-xl bg-cyan-500/10 text-cyan-400 font-bold flex items-center justify-between transition-all border border-cyan-500/20 mt-2"
+                  >
+                    <span className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                      Admin Control Panel
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-cyan-400" />
+                  </Link>
+                )}
               </nav>
             </div>
 
