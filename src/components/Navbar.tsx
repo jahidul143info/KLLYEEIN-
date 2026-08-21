@@ -66,14 +66,10 @@ export default function Navbar() {
           </form>
 
           {/* Navigation Links */}
-          <nav className="hidden lg:flex items-center gap-5 text-xs font-semibold uppercase tracking-wider text-gray-300">
+          <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold uppercase tracking-wider text-gray-300">
             <Link to="/" className="hover:text-cyan-400 transition-colors">Home</Link>
             <a href="#categories" onClick={(e) => { e.preventDefault(); document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-cyan-400 transition-colors cursor-pointer">Categories</a>
-            <a href="#products" onClick={(e) => { e.preventDefault(); document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-cyan-400 transition-colors cursor-pointer">Gadgets</a>
-            <a href="#ai-advisor" onClick={(e) => { e.preventDefault(); document.getElementById('ai-advisor')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-purple-400 transition-colors flex items-center gap-1 text-purple-300 cursor-pointer">
-              <Cpu className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-              AI Advisor
-            </a>
+            <a href="#products" onClick={(e) => { e.preventDefault(); document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-cyan-400 transition-colors cursor-pointer">All Gadgets</a>
             {isAdmin && (
               <Link to="/admin" className="hover:text-cyan-300 transition-all flex items-center gap-1 text-cyan-400 font-bold bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/20">
                 <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
@@ -233,22 +229,6 @@ export default function Navbar() {
                   className="px-3.5 py-3 rounded-xl hover:bg-white/5 hover:text-cyan-400 flex items-center justify-between transition-all cursor-pointer"
                 >
                   <span>Shop All Gadgets</span>
-                  <ChevronRight className="w-4 h-4 text-gray-500" />
-                </a>
-                <a
-                  href="#ai-advisor"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setMobileMenuOpen(false);
-                    const el = document.getElementById('ai-advisor');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="px-3.5 py-3 rounded-xl hover:bg-white/5 text-purple-300 flex items-center justify-between transition-all cursor-pointer"
-                >
-                  <span className="flex items-center gap-2">
-                    <Cpu className="w-4 h-4 text-purple-400" />
-                    AI Tech Advisor
-                  </span>
                   <ChevronRight className="w-4 h-4 text-gray-500" />
                 </a>
                 {isAdmin && (

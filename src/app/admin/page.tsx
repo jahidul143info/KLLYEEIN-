@@ -8,13 +8,11 @@ import {
   ShoppingCart,
   Layers,
   Image as ImageIcon,
-  Cloud,
-  Database,
+  Images,
   KeyRound,
   ShieldCheck,
   ShieldAlert,
   ExternalLink,
-  Copy,
   Plus,
   Trash2,
   Edit3,
@@ -52,7 +50,6 @@ import { Product, ProductSpec } from '../../types';
 import { getCloudinaryImageUrl } from '../../lib/cloudinary';
 import { compressImageFile, uploadImageToServer } from '../../lib/imageUploadUtils';
 import { useAuth, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from '../../context/AuthContext';
-import { getSupabaseConfig } from '../../lib/supabase';
 import { AdminOrder } from '../api/orders/route';
 
 type AdminTab =
@@ -62,7 +59,6 @@ type AdminTab =
   | 'categories'
   | 'banners'
   | 'media'
-  | 'database'
   | 'security';
 
 export default function AdminPanelPage() {
@@ -74,21 +70,11 @@ export default function AdminPanelPage() {
     isLoading: isAuthLoading,
     signInWithPassword,
     signOut,
-    isSupabaseConfigured,
-    saveSupabaseSettings,
-    signInWithGoogle,
   } = useAuth();
 
   // Active Tab State
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-
-  // Supabase Settings Form State
-  const [supabaseUrlInput, setSupabaseUrlInput] = useState(() => getSupabaseConfig().url);
-  const [supabaseKeyInput, setSupabaseKeyInput] = useState(() => getSupabaseConfig().anonKey);
-  const [supabaseSaveMsg, setSupabaseSaveMsg] = useState<string | null>(null);
-  const [isTestingGoogleAuth, setIsTestingGoogleAuth] = useState(false);
-  const [googleAuthTestError, setGoogleAuthTestError] = useState<string | null>(null);
 
   // Admin Login Screen Form State
   const [adminEmailInput, setAdminEmailInput] = useState(adminCredentials?.email || DEFAULT_ADMIN_EMAIL);
@@ -513,62 +499,6 @@ export default function AdminPanelPage() {
     return matchesStatus && matchesSearch;
   });
 
-  const fullSqlScript = `-- KLLYEEIN Gadgets Database Schema
-CREATE TABLE IF NOT EXISTS public.products (
-  id TEXT PRIMARY KEY DEFAULT ('prod_' || gen_random_uuid()::text),
-  name TEXT NOT NULL,
-  slug TEXT UNIQUE NOT NULL,
-  category TEXT NOT NULL,
-  tagline TEXT,
-  description TEXT,
-  price NUMERIC NOT NULL,
-  original_price NUMERIC,
-  images TEXT[] DEFAULT '{}',
-  specs JSONB DEFAULT '[]'::jsonb,
-  is_featured BOOLEAN DEFAULT false,
-  is_trending BOOLEAN DEFAULT false,
-  is_new_release BOOLEAN DEFAULT true,
-  stock INT DEFAULT 15,
-  rating NUMERIC DEFAULT 5.0,
-  review_count INT DEFAULT 1,
-  tags TEXT[] DEFAULT '{}',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS public.orders (
-  id TEXT PRIMARY KEY DEFAULT ('ord_' || gen_random_uuid()::text),
-  order_number TEXT UNIQUE NOT NULL,
-  user_email TEXT,
-  status TEXT DEFAULT 'pending',
-  items JSONB NOT NULL,
-  total_amount NUMERIC NOT NULL,
-  shipping_fee NUMERIC DEFAULT 0,
-  payment_method TEXT NOT NULL,
-  shipping_address JSONB NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS public.banners (
-  id TEXT PRIMARY KEY DEFAULT ('banner_' || gen_random_uuid()::text),
-  title TEXT NOT NULL,
-  subtitle TEXT,
-  image_url TEXT NOT NULL,
-  badge TEXT,
-  cta_text TEXT DEFAULT 'Shop Now',
-  cta_link TEXT DEFAULT '/#products',
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.banners ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Full access products" ON public.products FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Full access orders" ON public.orders FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Full access banners" ON public.banners FOR ALL USING (true) WITH CHECK (true);
-`;
-
   // IF NOT AUTHENTICATED AS ADMIN: SHOW DEDICATED ADMIN LOGIN PORTAL
   if (!isAdmin) {
     return (
@@ -865,23 +795,8 @@ CREATE POLICY "Full access banners" ON public.banners FOR ALL USING (true) WITH 
                   : 'text-gray-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Cloud className="w-4 h-4 text-sky-400" />
-              <span>Cloudinary Media</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab('database');
-                setMobileSidebarOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                activeTab === 'database'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-md shadow-cyan-500/10'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Database className="w-4 h-4 text-pink-400" />
-              <span>Database SQL Console</span>
+              <Images className="w-4 h-4 text-sky-400" />
+              <span>Media & Assets</span>
             </button>
 
             <button
@@ -950,18 +865,17 @@ CREATE POLICY "Full access banners" ON public.banners FOR ALL USING (true) WITH 
               {activeTab === 'orders' && 'Customer Orders & Fulfillment'}
               {activeTab === 'categories' && 'Store Categories & Hierarchy'}
               {activeTab === 'banners' && 'Hero Promotions & Banners'}
-              {activeTab === 'media' && 'Cloudinary Media Asset Hub'}
-              {activeTab === 'database' && 'Supabase Database & SQL Engine'}
+              {activeTab === 'media' && 'Store Media & Asset Library'}
               {activeTab === 'security' && 'Admin Credentials & Access Control'}
             </h1>
           </div>
 
           <div className="flex items-center gap-3 shrink-0 flex-wrap">
-            {/* Supabase status badge */}
+            {/* System Live Status */}
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/50 border border-white/10 text-xs font-mono">
-              <span className={`w-2 h-2 rounded-full ${isSupabaseConfigured ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               <span className="text-gray-300 text-[11px]">
-                {isSupabaseConfigured ? 'Supabase Connected' : 'Local Fallback Mode'}
+                Store Active & Synchronized
               </span>
             </div>
 
@@ -1192,19 +1106,19 @@ CREATE POLICY "Full access banners" ON public.banners FOR ALL USING (true) WITH 
                   </button>
 
                   <button
-                    onClick={() => setActiveTab('database')}
-                    className="w-full p-3.5 rounded-2xl bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/30 text-left flex items-center justify-between text-xs transition-all group"
+                    onClick={() => setActiveTab('media')}
+                    className="w-full p-3.5 rounded-2xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 text-left flex items-center justify-between text-xs transition-all group"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-xl bg-pink-400 text-black">
-                        <Database className="w-4 h-4" />
+                      <div className="p-2 rounded-xl bg-sky-400 text-black">
+                        <Images className="w-4 h-4" />
                       </div>
                       <div>
-                        <div className="font-bold text-white group-hover:text-pink-300">Supabase SQL Script</div>
-                        <div className="text-[10px] text-gray-400">Copy Full Database Schema</div>
+                        <div className="font-bold text-white group-hover:text-sky-300">Media & Assets Vault</div>
+                        <div className="text-[10px] text-gray-400">Upload & Manage Store Photos</div>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-pink-300" />
+                    <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-sky-300" />
                   </button>
                 </div>
               </div>
@@ -1380,7 +1294,7 @@ CREATE POLICY "Full access banners" ON public.banners FOR ALL USING (true) WITH 
                         Create & Publish New Product
                       </h2>
                       <p className="text-xs text-gray-400">
-                        Upload multi-resolution images to Cloudinary and catalog specs.
+                        Upload high-resolution product photos and catalog specifications.
                       </p>
                     </div>
                     <button
@@ -1494,10 +1408,10 @@ CREATE POLICY "Full access banners" ON public.banners FOR ALL USING (true) WITH 
                     <div className="space-y-3 pt-3 border-t border-white/10">
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <label className="text-xs font-bold text-cyan-300 flex items-center gap-1.5 uppercase font-mono">
-                          <Cloud className="w-4 h-4" /> Product Photos ({uploadedUrls.length} Added) *
+                          <Images className="w-4 h-4" /> Product Photos ({uploadedUrls.length} Added) *
                         </label>
                         <span className="text-[10px] text-gray-400 font-mono bg-white/5 px-2 py-0.5 rounded-md border border-white/10">
-                          Cloudinary: {selectedFolder}
+                          Storage: Products
                         </span>
                       </div>
 
@@ -1936,7 +1850,7 @@ CREATE POLICY "Full access banners" ON public.banners FOR ALL USING (true) WITH 
                 <div className="space-y-1">
                   <h2 className="text-lg font-bold text-white font-mono flex items-center gap-2">
                     <Layers className="w-5 h-5 text-purple-400" />
-                    Store Categories & Cloudinary Media
+                    Store Categories & Collections
                   </h2>
                   <p className="text-xs text-gray-400">
                     Manage category thumbnails, icon descriptors, and live catalog counts.
@@ -1980,7 +1894,7 @@ CREATE POLICY "Full access banners" ON public.banners FOR ALL USING (true) WITH 
                   Hero Promotional Campaign Banners
                 </h2>
                 <p className="text-xs text-gray-400">
-                  Upload promotional banner graphics to Cloudinary and set promotional headline text.
+                  Upload promotional banner graphics and set promotional headline text.
                 </p>
               </div>
 
@@ -2062,36 +1976,36 @@ CREATE POLICY "Full access banners" ON public.banners FOR ALL USING (true) WITH 
           </div>
         )}
 
-        {/* TAB 6: CLOUDINARY MEDIA EXPLORER */}
+        {/* TAB 6: STORE MEDIA & ASSET VAULT */}
         {activeTab === 'media' && (
           <div className="space-y-6">
             <div className="p-6 rounded-3xl bg-[#0d0f1a] border border-white/10 space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
                 <div className="space-y-1">
                   <h2 className="text-lg font-bold text-white font-mono flex items-center gap-2">
-                    <Cloud className="w-5 h-5 text-sky-400" />
-                    Cloudinary Media Asset Library
+                    <Images className="w-5 h-5 text-sky-400" />
+                    Store Media & Asset Library
                   </h2>
                   <p className="text-xs text-gray-400">
-                    Direct multi-file upload engine connected to Cloudinary CDN (`pgggwtrz`).
+                    Upload, organize, and manage high-resolution product photos, campaign banners, and catalog assets.
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <label className="text-xs text-gray-400 font-mono">Target Folder:</label>
+                  <label className="text-xs text-gray-400 font-mono">Asset Category:</label>
                   <select
                     value={selectedFolder}
                     onChange={(e) => setSelectedFolder(e.target.value)}
                     className="bg-black/60 border border-white/15 rounded-xl px-3 py-1.5 text-xs text-cyan-300 font-mono"
                   >
-                    <option value="kllyeein-gadgets/products">kllyeein-gadgets/products</option>
-                    <option value="kllyeein-gadgets/banners">kllyeein-gadgets/banners</option>
-                    <option value="kllyeein-gadgets/categories">kllyeein-gadgets/categories</option>
+                    <option value="kllyeein-gadgets/products">Product Photos</option>
+                    <option value="kllyeein-gadgets/banners">Hero Banners</option>
+                    <option value="kllyeein-gadgets/categories">Category Covers</option>
                   </select>
                 </div>
               </div>
 
-              {/* MOBILE ACTION BUTTONS (Camera + Multi-Gallery) FOR MEDIA TAB */}
+              {/* ACTION BUTTONS (Camera + Multi-Gallery) FOR MEDIA TAB */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <label className="flex items-center justify-center gap-2.5 p-4 rounded-2xl bg-sky-500/10 hover:bg-sky-500/20 active:scale-[0.99] border border-sky-500/30 text-sky-300 text-xs font-bold uppercase tracking-wider cursor-pointer transition-all shadow-sm">
                   <Camera className="w-4 h-4 text-sky-400 shrink-0" />
@@ -2123,13 +2037,13 @@ CREATE POLICY "Full access banners" ON public.banners FOR ALL USING (true) WITH 
               {isUploading && (
                 <div className="p-3.5 rounded-2xl bg-sky-950/40 border border-sky-500/40 text-sky-300 text-xs flex items-center justify-center gap-2.5 animate-pulse font-mono">
                   <RefreshCw className="w-4 h-4 animate-spin text-sky-400" />
-                  <span>{uploadStatusText || 'Optimizing & Uploading assets to CDN...'}</span>
+                  <span>{uploadStatusText || 'Optimizing & Uploading assets to Media Vault...'}</span>
                 </div>
               )}
 
               {/* Media Grid */}
               <div className="space-y-3">
-                <h3 className="text-xs font-bold text-gray-300 font-mono uppercase">Asset Stream:</h3>
+                <h3 className="text-xs font-bold text-gray-300 font-mono uppercase">Asset Library:</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                   {mediaGallery.map((url, idx) => (
                     <div key={idx} className="group relative rounded-2xl overflow-hidden border border-white/10 bg-black h-36">
@@ -2145,233 +2059,6 @@ CREATE POLICY "Full access banners" ON public.banners FOR ALL USING (true) WITH 
                     </div>
                   ))}
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 7: DATABASE & SUPABASE CONSOLE */}
-        {activeTab === 'database' && (
-          <div className="max-w-4xl mx-auto space-y-6">
-            {/* Supabase Connection Status & Configuration Card */}
-            <div className="p-6 sm:p-8 rounded-3xl bg-[#0d0f1a] border border-cyan-500/30 shadow-2xl space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Database className="w-5 h-5 text-cyan-400" />
-                    <h2 className="text-xl font-bold text-white font-mono">
-                      Supabase Project & Google OAuth
-                    </h2>
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    Connect your real Supabase project to enable cloud database synchronization and Google 1-click authentication.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold font-mono uppercase tracking-wider ${
-                      isSupabaseConfigured
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                    }`}
-                  >
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        isSupabaseConfigured ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'
-                      }`}
-                    />
-                    {isSupabaseConfigured ? 'Connected & Active' : 'Setup Required'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Feedback messages */}
-              {supabaseSaveMsg && (
-                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>{supabaseSaveMsg}</span>
-                </div>
-              )}
-
-              {googleAuthTestError && (
-                <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
-                  <span>{googleAuthTestError}</span>
-                </div>
-              )}
-
-              {/* Supabase URL & Anon Key Form */}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const saved = saveSupabaseSettings(supabaseUrlInput, supabaseKeyInput);
-                  if (saved) {
-                    setSupabaseSaveMsg('Supabase credentials saved successfully!');
-                    setTimeout(() => setSupabaseSaveMsg(null), 3500);
-                  } else {
-                    setSupabaseSaveMsg('Cleared credentials. Supabase is now offline.');
-                    setTimeout(() => setSupabaseSaveMsg(null), 3500);
-                  }
-                }}
-                className="space-y-4"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
-                      <Cloud className="w-3.5 h-3.5 text-cyan-400" /> Supabase Project URL
-                    </label>
-                    <input
-                      type="url"
-                      placeholder="https://your-project.supabase.co"
-                      value={supabaseUrlInput}
-                      onChange={(e) => setSupabaseUrlInput(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/10 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-cyan-400 font-mono"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
-                      <KeyRound className="w-3.5 h-3.5 text-cyan-400" /> Supabase Anon Key (Public)
-                    </label>
-                    <input
-                      type="password"
-                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                      value={supabaseKeyInput}
-                      onChange={(e) => setSupabaseKeyInput(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/10 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-cyan-400 font-mono"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3 pt-2">
-                  <button
-                    type="submit"
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-indigo-600 hover:opacity-95 text-black font-bold text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
-                  >
-                    Save & Apply Credentials
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={isTestingGoogleAuth}
-                    onClick={async () => {
-                      setIsTestingGoogleAuth(true);
-                      setGoogleAuthTestError(null);
-                      try {
-                        const res = await signInWithGoogle();
-                        if (res?.error) {
-                          setGoogleAuthTestError(res.error);
-                        }
-                      } catch (err: any) {
-                        setGoogleAuthTestError(err.message || 'Google OAuth failed');
-                      } finally {
-                        setIsTestingGoogleAuth(false);
-                      }
-                    }}
-                    className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer"
-                  >
-                    {isTestingGoogleAuth ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
-                    ) : (
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
-                        <path
-                          fill="#4285F4"
-                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                        />
-                        <path
-                          fill="#34A853"
-                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                        />
-                        <path
-                          fill="#FBBC05"
-                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                        />
-                        <path
-                          fill="#EA4335"
-                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                        />
-                      </svg>
-                    )}
-                    <span>Test Real Google Sign-in</span>
-                  </button>
-                </div>
-              </form>
-
-              {/* Supabase Google Auth Setup Guide */}
-              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3">
-                <h3 className="text-xs font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                  Google OAuth Configuration Checklist for Supabase:
-                </h3>
-                <div className="space-y-2 text-xs text-gray-300">
-                  <div className="flex items-start gap-2">
-                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">
-                      1
-                    </span>
-                    <div>
-                      <strong>Enable Google Provider in Supabase:</strong> In your Supabase Dashboard, navigate to{' '}
-                      <span className="text-cyan-300 font-mono">Authentication &gt; Providers &gt; Google</span>, toggle{' '}
-                      <strong>Enable</strong> to ON, and paste your Google Client ID and Client Secret.
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2">
-                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">
-                      2
-                    </span>
-                    <div>
-                      <strong>Add Callback URI to Google Cloud Console:</strong> In Google Cloud Console (under OAuth 2.0 Client credentials), set the Authorized Redirect URI to:{' '}
-                      <code className="text-pink-300 font-mono bg-black/60 px-1.5 py-0.5 rounded">
-                        https://&lt;your-project-id&gt;.supabase.co/auth/v1/callback
-                      </code>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2">
-                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">
-                      3
-                    </span>
-                    <div>
-                      <strong>Add Redirect URLs in Supabase:</strong> In Supabase Dashboard, go to{' '}
-                      <span className="text-cyan-300 font-mono">Authentication &gt; URL Configuration</span> and add this app's URL to Redirect URLs:{' '}
-                      <code className="text-emerald-300 font-mono bg-black/60 px-1.5 py-0.5 rounded">
-                        {typeof window !== 'undefined' ? `${window.location.origin}/**` : 'https://your-domain.com/**'}
-                      </code>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* SQL Script Box */}
-            <div className="p-6 sm:p-8 rounded-3xl bg-[#0d0f1a] border border-pink-500/30 shadow-2xl space-y-6">
-              <div className="flex items-start justify-between gap-4 pb-4 border-b border-white/10">
-                <div className="space-y-1">
-                  <h2 className="text-xl font-bold text-white font-mono flex items-center gap-2">
-                    <Database className="w-5 h-5 text-pink-400" />
-                    Supabase SQL Database Schema & RLS
-                  </h2>
-                  <p className="text-xs text-gray-400">
-                    Copy and run this SQL script inside your Supabase project's SQL Editor to instantiate all tables and policies.
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(fullSqlScript);
-                    setSqlCopied(true);
-                    setTimeout(() => setSqlCopied(false), 2500);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-pink-500 hover:bg-pink-400 text-black font-extrabold text-xs uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-pink-500/20 shrink-0 cursor-pointer"
-                >
-                  <Copy className="w-4 h-4" />
-                  {sqlCopied ? 'Copied SQL!' : 'Copy Full SQL'}
-                </button>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-black/60 border border-white/10 font-mono text-xs text-gray-300 max-h-96 overflow-y-auto scrollbar-thin">
-                <pre className="whitespace-pre-wrap">{fullSqlScript}</pre>
               </div>
             </div>
           </div>
