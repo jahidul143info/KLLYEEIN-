@@ -83,6 +83,28 @@ export function saveSupabaseConfig(url: string, anonKey: string): boolean {
   return true;
 }
 
+export async function ensureSupabaseConfig(): Promise<SupabaseConfig> {
+  const current = getSupabaseConfig();
+  if (current.isConfigured) return current;
+
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.supabaseUrl && data.supabaseAnonKey) {
+          saveSupabaseConfig(data.supabaseUrl, data.supabaseAnonKey);
+          return getSupabaseConfig();
+        }
+      }
+    } catch {
+      // silent fallback
+    }
+  }
+
+  return current;
+}
+
 export const isSupabaseConfigured = getSupabaseConfig().isConfigured;
 export const supabase = getSupabaseClient();
 

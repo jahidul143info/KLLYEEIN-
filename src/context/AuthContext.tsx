@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getSupabaseClient, getSupabaseConfig, saveSupabaseConfig } from '../lib/supabase';
+import { getSupabaseClient, getSupabaseConfig, saveSupabaseConfig, ensureSupabaseConfig } from '../lib/supabase';
 import { UserProfile } from '../types';
 
 export const DEFAULT_ADMIN_EMAIL = 'admin.osman@gmail.com';
@@ -93,18 +93,25 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
 
   // Initial Auth Check & Supabase Session Listener
   useEffect(() => {
-    const client = getSupabaseClient();
-    const config = getSupabaseConfig();
-    setSupabaseReady(config.isConfigured);
+    let isMounted = true;
 
-    if (config.isConfigured && client) {
-      // 1. Check active session (including returning from Google OAuth redirect)
-      client.auth.getSession().then(({ data: { session }, error }) => {
+    async function initAuth() {
+      await ensureSupabaseConfig();
+      const client = getSupabaseClient();
+      const config = getSupabaseConfig();
+      
+      if (isMounted) {
+        setSupabaseReady(config.isConfigured);
+      }
+
+      if (config.isConfigured && client) {
+        // 1. Check active session (including returning from Google OAuth redirect)
+        const { data: { session }, error } = await client.auth.getSession();
         if (error) {
           console.warn('Supabase getSession error:', error.message);
         }
 
-        if (session?.user) {
+        if (session?.user && isMounted) {
           const email = session.user.email || '';
           const isAdm = getRoleFromEmail(email) === 'admin';
           const name =
@@ -125,7 +132,7 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
           };
           setUser(userObj);
           localStorage.setItem('kllyeein_user', JSON.stringify(userObj));
-        } else {
+        } else if (isMounted) {
           // Check local persistence
           const savedUser = localStorage.getItem('kllyeein_user');
           if (savedUser) {
@@ -136,63 +143,71 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
             }
           }
         }
-        setIsLoading(false);
-      });
 
-      // 2. Real-time Supabase Auth state changes
-      const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
-        if (session?.user) {
-          const email = session.user.email || '';
-          const isAdm = getRoleFromEmail(email) === 'admin';
-          const name =
-            session.user.user_metadata?.full_name ||
-            session.user.user_metadata?.name ||
-            (isAdm ? adminCredentials.fullName : email.split('@')[0]);
-          const avatar =
-            session.user.user_metadata?.avatar_url ||
-            session.user.user_metadata?.picture ||
-            `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(email || 'user')}`;
+        if (isMounted) setIsLoading(false);
 
-          const userObj: UserProfile = {
-            id: session.user.id,
-            email,
-            fullName: name,
-            avatarUrl: avatar,
-            role: isAdm ? 'admin' : 'customer',
-          };
-          setUser(userObj);
-          localStorage.setItem('kllyeein_user', JSON.stringify(userObj));
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-          localStorage.removeItem('kllyeein_user');
+        // 2. Real-time Supabase Auth state changes
+        const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
+          if (!isMounted) return;
+          if (session?.user) {
+            const email = session.user.email || '';
+            const isAdm = getRoleFromEmail(email) === 'admin';
+            const name =
+              session.user.user_metadata?.full_name ||
+              session.user.user_metadata?.name ||
+              (isAdm ? adminCredentials.fullName : email.split('@')[0]);
+            const avatar =
+              session.user.user_metadata?.avatar_url ||
+              session.user.user_metadata?.picture ||
+              `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(email || 'user')}`;
+
+            const userObj: UserProfile = {
+              id: session.user.id,
+              email,
+              fullName: name,
+              avatarUrl: avatar,
+              role: isAdm ? 'admin' : 'customer',
+            };
+            setUser(userObj);
+            localStorage.setItem('kllyeein_user', JSON.stringify(userObj));
+          } else if (event === 'SIGNED_OUT') {
+            setUser(null);
+            localStorage.removeItem('kllyeein_user');
+          }
+          setIsLoading(false);
+        });
+
+        return () => subscription.unsubscribe();
+      } else {
+        // Local persistence check when Supabase is not yet connected
+        const savedUser = localStorage.getItem('kllyeein_user');
+        if (savedUser && isMounted) {
+          try {
+            setUser(JSON.parse(savedUser));
+          } catch {
+            setUser(null);
+          }
         }
-        setIsLoading(false);
-      });
-
-      return () => subscription.unsubscribe();
-    } else {
-      // Local persistence check when Supabase is not yet connected
-      const savedUser = localStorage.getItem('kllyeein_user');
-      if (savedUser) {
-        try {
-          setUser(JSON.parse(savedUser));
-        } catch {
-          setUser(null);
-        }
+        if (isMounted) setIsLoading(false);
       }
-      setIsLoading(false);
     }
+
+    initAuth();
+
+    return () => {
+      isMounted = false;
+    };
   }, [adminCredentials.email]);
 
   // Real Supabase Google OAuth Sign In
   const signInWithGoogle = async (): Promise<{ error?: string }> => {
+    await ensureSupabaseConfig();
     const client = getSupabaseClient();
     const config = getSupabaseConfig();
 
     if (!config.isConfigured || !client) {
       return {
-        error:
-          'Supabase is not configured yet. Please configure your NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Settings or the Admin Database Tab.',
+        error: 'Google Sign-In is currently being connected. Please sign in using your Email and Password below.',
       };
     }
 

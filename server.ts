@@ -315,6 +315,26 @@ async function startServer() {
     }
   });
 
+  app.get('/api/config', (req, res) => {
+    const url =
+      process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      process.env.VITE_SUPABASE_URL ||
+      process.env.SUPABASE_URL ||
+      '';
+
+    const anonKey =
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.VITE_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      '';
+
+    res.json({
+      supabaseUrl: url,
+      supabaseAnonKey: anonKey,
+      isConfigured: Boolean(url && anonKey && url.startsWith('http')),
+    });
+  });
+
   app.post('/api/upload', upload.single('file'), async (req, res) => {
     try {
       const file = req.file;
