@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { getCloudinaryImageUrl } from '../../lib/cloudinary';
+import { getStoreSettings, StoreSettings, DEFAULT_STORE_SETTINGS } from '../../data/storeSettings';
 
 const BANGLADESH_DIVISIONS = [
   { name: 'Dhaka City (24H Express)', fee: 60, isDhaka: true },
@@ -58,7 +59,10 @@ export default function CheckoutPage() {
     totalItems,
   } = useCart();
 
-  const { user } = useAuth();
+  const { user, setIsAuthModalOpen } = useAuth();
+
+  // Store Settings (Dynamic Payment Numbers, Delivery Rates)
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => getStoreSettings());
 
   // Form states
   const [fullName, setFullName] = useState(user?.fullName || '');
@@ -67,7 +71,7 @@ export default function CheckoutPage() {
   const [selectedDivision, setSelectedDivision] = useState(BANGLADESH_DIVISIONS[0].name);
   const [address, setAddress] = useState('');
   const [deliveryNotes, setDeliveryNotes] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'bkash' | 'nagad' | 'card'>('cod');
+  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'bkash' | 'nagad' | 'rocket' | 'card'>('cod');
   const [trxId, setTrxId] = useState('');
   const [inputPromo, setInputPromo] = useState('');
 
@@ -91,6 +95,21 @@ export default function CheckoutPage() {
     if (user?.email && !email) setEmail(user.email);
   }, [user]);
 
+  // Sync store settings & payment numbers
+  useEffect(() => {
+    const handleUpdate = () => setStoreSettings(getStoreSettings());
+    window.addEventListener('kllyeein_settings_updated', handleUpdate);
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.settings) {
+          setStoreSettings((prev) => ({ ...prev, ...d.settings }));
+        }
+      })
+      .catch(() => {});
+    return () => window.removeEventListener('kllyeein_settings_updated', handleUpdate);
+  }, []);
+
   // Dynamic Shipping Fee based on division and order subtotal
   const currentDivisionObj = BANGLADESH_DIVISIONS.find((d) => d.name === selectedDivision) || BANGLADESH_DIVISIONS[0];
   const dynamicShippingFee = subtotal > 150000 || cart.length === 0 ? 0 : currentDivisionObj.fee;
@@ -112,6 +131,13 @@ export default function CheckoutPage() {
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+
+    // 1. Enforce Authentication Requirement
+    if (!user) {
+      setErrorMsg('Please log in or create an account to confirm and place your order.');
+      setIsAuthModalOpen(true, 'checkout');
+      return;
+    }
 
     if (cart.length === 0) {
       setErrorMsg('Your shopping cart is empty. Please add items to checkout.');
@@ -150,7 +176,7 @@ export default function CheckoutPage() {
           shippingFee: dynamicShippingFee,
           paymentMethod,
           trxId: trxId.trim() || `TXN_${paymentMethod.toUpperCase()}_${Date.now()}`,
-          userEmail: email.trim() || user?.email || 'customer@kllyeein.com',
+          userEmail: user?.email || email.trim() || 'customer@kllyeein.com',
           shippingAddress: {
             fullName: fullName.trim(),
             phone: phone.trim(),
@@ -163,6 +189,33 @@ export default function CheckoutPage() {
 
       const data = await response.json();
       const orderId = data.order?.orderNumber || data.transactionId || `KLY-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      // Save to localStorage for instant real-time sync with Admin panel
+      try {
+        const existingLocal = JSON.parse(localStorage.getItem('kllyeein_orders') || '[]');
+        const placedOrderRecord = {
+          id: data.order?.id || `ord_${Date.now()}`,
+          orderNumber: orderId,
+          userEmail: user?.email || email.trim() || 'customer@kllyeein.com',
+          status: 'pending',
+          items: cart,
+          totalAmount: finalTotalAmount,
+          shippingFee: dynamicShippingFee,
+          paymentMethod: paymentMethod.toUpperCase(),
+          trxId: trxId.trim() || `TXN_${paymentMethod.toUpperCase()}_${Date.now()}`,
+          shippingAddress: {
+            fullName: fullName.trim(),
+            phone: phone.trim(),
+            address: address.trim(),
+            city: selectedDivision,
+            notes: deliveryNotes.trim(),
+          },
+          createdAt: new Date().toISOString(),
+        };
+        localStorage.setItem('kllyeein_orders', JSON.stringify([placedOrderRecord, ...existingLocal]));
+      } catch {
+        // storage fallback
+      }
 
       // Confetti celebration
       try {
@@ -194,6 +247,33 @@ export default function CheckoutPage() {
       console.error('Order submission error:', err);
       // Fallback local confirmation
       const fallbackOrderId = `KLY-${Math.floor(100000 + Math.random() * 900000)}`;
+      
+      try {
+        const existingLocal = JSON.parse(localStorage.getItem('kllyeein_orders') || '[]');
+        const fallbackRecord = {
+          id: `ord_${Date.now()}`,
+          orderNumber: fallbackOrderId,
+          userEmail: user?.email || email.trim() || 'customer@kllyeein.com',
+          status: 'pending',
+          items: cart,
+          totalAmount: finalTotalAmount,
+          shippingFee: dynamicShippingFee,
+          paymentMethod: paymentMethod.toUpperCase(),
+          trxId: trxId.trim() || `TXN_${paymentMethod.toUpperCase()}_${Date.now()}`,
+          shippingAddress: {
+            fullName: fullName.trim(),
+            phone: phone.trim(),
+            address: address.trim(),
+            city: selectedDivision,
+            notes: deliveryNotes.trim(),
+          },
+          createdAt: new Date().toISOString(),
+        };
+        localStorage.setItem('kllyeein_orders', JSON.stringify([fallbackRecord, ...existingLocal]));
+      } catch {
+        // storage fallback
+      }
+
       setConfirmedOrder({
         orderNumber: fallbackOrderId,
         totalAmount: finalTotalAmount,
@@ -362,6 +442,56 @@ export default function CheckoutPage() {
           <span className="text-gray-500 hidden sm:inline">3. Confirmation</span>
         </div>
       </div>
+
+      {/* Account Verification & Login Banner */}
+      {!user ? (
+        <div className="p-5 rounded-3xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-pink-500/15 border border-amber-500/40 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+          <div className="flex items-start gap-3.5">
+            <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-300 shrink-0 shadow-inner">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold uppercase tracking-wider">
+                Account Required
+              </div>
+              <h3 className="text-sm sm:text-base font-bold text-white font-mono">
+                Please Sign In or Create an Account to Confirm Order
+              </h3>
+              <p className="text-xs text-gray-300 max-w-xl">
+                To guarantee genuine brand warranty, parcel tracking, and order history, please log in or create a quick account.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsAuthModalOpen(true, 'checkout')}
+            className="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 hover:scale-105 transition-all cursor-pointer shrink-0 flex items-center justify-center gap-2"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            Sign In / Register Now
+          </button>
+        </div>
+      ) : (
+        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold flex items-center justify-center font-mono text-sm shadow">
+              {user.fullName?.[0]?.toUpperCase() || 'U'}
+            </div>
+            <div>
+              <span className="text-gray-400 text-[10px] uppercase font-mono block">Ordering as</span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-white text-sm">{user.fullName || user.email}</span>
+                <span className="text-cyan-300 font-mono text-[11px]">({user.email})</span>
+              </div>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 font-mono text-[10px] font-bold uppercase flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Verified Customer
+          </span>
+        </div>
+      )}
 
       {/* Mobile Collapsible Order Summary Drawer */}
       <div className="lg:hidden rounded-2xl bg-[#0e101a] border border-white/10 overflow-hidden shadow-lg">
@@ -569,30 +699,32 @@ export default function CheckoutPage() {
             {/* Payment Options Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               
-              {/* Cash On Delivery (Recommended) */}
-              <div
-                onClick={() => setPaymentMethod('cod')}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 ${
-                  paymentMethod === 'cod'
-                    ? 'bg-emerald-950/40 border-emerald-500 ring-2 ring-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.15)]'
-                    : 'bg-black/40 border-white/10 hover:border-white/20'
-                }`}
-              >
-                <div className="w-5 h-5 rounded-full border-2 border-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
-                  {paymentMethod === 'cod' && <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />}
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-xs sm:text-sm text-white">Cash on Delivery (COD)</span>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">
-                      POPULAR
-                    </span>
+              {/* Cash On Delivery */}
+              {storeSettings.codEnabled !== false && (
+                <div
+                  onClick={() => setPaymentMethod('cod')}
+                  className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 ${
+                    paymentMethod === 'cod'
+                      ? 'bg-emerald-950/40 border-emerald-500 ring-2 ring-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.15)]'
+                      : 'bg-black/40 border-white/10 hover:border-white/20'
+                  }`}
+                >
+                  <div className="w-5 h-5 rounded-full border-2 border-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                    {paymentMethod === 'cod' && <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />}
                   </div>
-                  <p className="text-[11px] text-gray-400 leading-relaxed">
-                    Pay with cash after checking your package upon doorstep arrival.
-                  </p>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs sm:text-sm text-white">Cash on Delivery (COD)</span>
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">
+                        POPULAR
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-400 leading-relaxed">
+                      Pay with cash after checking your package upon doorstep arrival.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* bKash */}
               <div
@@ -614,7 +746,7 @@ export default function CheckoutPage() {
                     </span>
                   </div>
                   <p className="text-[11px] text-gray-400 leading-relaxed">
-                    Send Money / Payment via bKash personal/merchant wallet.
+                    {storeSettings.bkashType || 'Personal (Send Money)'} — {storeSettings.bkashNumber || '01700-112233'}
                   </p>
                 </div>
               </div>
@@ -634,78 +766,143 @@ export default function CheckoutPage() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-xs sm:text-sm text-white">Nagad Mobile</span>
+                    <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 text-[10px] font-mono font-bold">
+                      OFFICIAL
+                    </span>
                   </div>
                   <p className="text-[11px] text-gray-400 leading-relaxed">
-                    Fast checkout with Nagad send money or merchant transfer.
+                    {storeSettings.nagadType || 'Personal (Send Money)'} — {storeSettings.nagadNumber || '01700-112233'}
                   </p>
                 </div>
               </div>
 
-              {/* Card / POS */}
-              <div
-                onClick={() => setPaymentMethod('card')}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 ${
-                  paymentMethod === 'card'
-                    ? 'bg-cyan-950/40 border-cyan-500 ring-2 ring-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.15)]'
-                    : 'bg-black/40 border-white/10 hover:border-white/20'
-                }`}
-              >
-                <div className="w-5 h-5 rounded-full border-2 border-cyan-400 flex items-center justify-center shrink-0 mt-0.5">
-                  {paymentMethod === 'card' && <div className="w-2.5 h-2.5 rounded-full bg-cyan-400" />}
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-xs sm:text-sm text-white">Credit / Debit Card / POS</span>
+              {/* Rocket (if configured) */}
+              {Boolean(storeSettings.rocketNumber) && (
+                <div
+                  onClick={() => setPaymentMethod('rocket')}
+                  className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 ${
+                    paymentMethod === 'rocket'
+                      ? 'bg-purple-950/40 border-purple-500 ring-2 ring-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.15)]'
+                      : 'bg-black/40 border-white/10 hover:border-white/20'
+                  }`}
+                >
+                  <div className="w-5 h-5 rounded-full border-2 border-purple-400 flex items-center justify-center shrink-0 mt-0.5">
+                    {paymentMethod === 'rocket' && <div className="w-2.5 h-2.5 rounded-full bg-purple-400" />}
                   </div>
-                  <p className="text-[11px] text-gray-400 leading-relaxed">
-                    Visa, MasterCard, Amex POS machine will be brought upon delivery.
-                  </p>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs sm:text-sm text-white">Rocket / DBBL</span>
+                    </div>
+                    <p className="text-[11px] text-gray-400 leading-relaxed">
+                      {storeSettings.rocketNumber} ({storeSettings.rocketType || 'Personal'})
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Card / POS */}
+              {storeSettings.cardEnabled !== false && (
+                <div
+                  onClick={() => setPaymentMethod('card')}
+                  className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 ${
+                    paymentMethod === 'card'
+                      ? 'bg-cyan-950/40 border-cyan-500 ring-2 ring-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.15)]'
+                      : 'bg-black/40 border-white/10 hover:border-white/20'
+                  }`}
+                >
+                  <div className="w-5 h-5 rounded-full border-2 border-cyan-400 flex items-center justify-center shrink-0 mt-0.5">
+                    {paymentMethod === 'card' && <div className="w-2.5 h-2.5 rounded-full bg-cyan-400" />}
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs sm:text-sm text-white">Credit / Debit Card / POS</span>
+                    </div>
+                    <p className="text-[11px] text-gray-400 leading-relaxed">
+                      Visa, MasterCard, Amex POS machine will be brought upon delivery.
+                    </p>
+                  </div>
+                </div>
+              )}
 
             </div>
 
-            {/* bKash / Nagad Interactive Instructions Drawer */}
-            {(paymentMethod === 'bkash' || paymentMethod === 'nagad') && (
-              <div className="p-5 rounded-2xl bg-black/70 border border-white/15 space-y-4 animate-in fade-in duration-200">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-white uppercase font-mono">
-                    {paymentMethod.toUpperCase()} Wallet Details:
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-cyan-300 font-mono font-bold">01700-112233</span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyNumber('01700112233')}
-                      className="px-2.5 py-1 rounded-lg bg-surface border border-white/20 text-white hover:text-cyan-400 text-[11px] font-mono flex items-center gap-1 cursor-pointer"
-                    >
-                      {copiedNumber ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedNumber ? 'Copied' : 'Copy'}</span>
-                    </button>
+            {/* bKash / Nagad / Rocket Interactive Instructions Drawer */}
+            {(paymentMethod === 'bkash' || paymentMethod === 'nagad' || paymentMethod === 'rocket') && (() => {
+              const activeNumber =
+                paymentMethod === 'bkash'
+                  ? storeSettings.bkashNumber || '01700-112233'
+                  : paymentMethod === 'nagad'
+                  ? storeSettings.nagadNumber || '01700-112233'
+                  : storeSettings.rocketNumber || '01700-112233-0';
+
+              const activeType =
+                paymentMethod === 'bkash'
+                  ? storeSettings.bkashType || 'Personal (Send Money)'
+                  : paymentMethod === 'nagad'
+                  ? storeSettings.nagadType || 'Personal (Send Money)'
+                  : storeSettings.rocketType || 'Personal (Send Money)';
+
+              const activeInstructions =
+                paymentMethod === 'bkash'
+                  ? storeSettings.bkashInstructions
+                  : paymentMethod === 'nagad'
+                  ? storeSettings.nagadInstructions
+                  : '';
+
+              const cleanDigits = activeNumber.replace(/[^0-9]/g, '');
+
+              return (
+                <div className="p-5 rounded-2xl bg-black/70 border border-white/15 space-y-4 animate-in fade-in duration-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-white uppercase font-mono">
+                        Official {paymentMethod.toUpperCase()} Wallet:
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono text-[10px] font-bold">
+                        {activeType}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-cyan-300 font-mono font-black">{activeNumber}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyNumber(cleanDigits)}
+                        className="px-2.5 py-1 rounded-lg bg-surface border border-white/20 text-white hover:text-cyan-400 text-[11px] font-mono flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        {copiedNumber ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedNumber ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {activeInstructions ? (
+                    <div className="text-[11px] text-gray-300 whitespace-pre-line leading-relaxed bg-surface/60 p-3.5 rounded-xl border border-white/5 font-mono">
+                      {activeInstructions}
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-gray-300 space-y-1 leading-relaxed bg-surface/60 p-3.5 rounded-xl border border-white/5 font-mono">
+                      <p>1. Open your <strong>{paymentMethod.toUpperCase()} App</strong> and choose <strong>&quot;{activeType.includes('Merchant') ? 'Make Payment' : 'Send Money'}&quot;</strong>.</p>
+                      <p>2. Send <strong>৳{finalTotalAmount.toLocaleString()} BDT</strong> to the number above ({activeNumber}).</p>
+                      <p>3. Copy and paste the <strong>Transaction ID (TrxID)</strong> into the verification box below.</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1">
+                      <span>{paymentMethod.toUpperCase()} Transaction ID (TrxID)</span> <span className="text-pink-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 9J83KL492X"
+                      value={trxId}
+                      onChange={(e) => setTrxId(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl bg-black border border-white/20 text-white placeholder-gray-500 font-mono text-xs sm:text-sm uppercase focus:outline-none focus:border-cyan-400"
+                    />
                   </div>
                 </div>
-
-                <div className="text-[11px] text-gray-300 space-y-1 leading-relaxed bg-surface/60 p-3.5 rounded-xl border border-white/5">
-                  <p>1. Open your <strong>{paymentMethod.toUpperCase()} App</strong> and choose <strong>&quot;Send Money&quot;</strong>.</p>
-                  <p>2. Send <strong>৳{finalTotalAmount.toLocaleString()} BDT</strong> to the number above.</p>
-                  <p>3. Copy and paste the <strong>Transaction ID (TrxID)</strong> into the box below.</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1">
-                    <span>{paymentMethod.toUpperCase()} Transaction ID (TrxID)</span> <span className="text-pink-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. 9J83KL492X"
-                    value={trxId}
-                    onChange={(e) => setTrxId(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-black border border-white/20 text-white placeholder-gray-500 font-mono text-xs sm:text-sm uppercase focus:outline-none focus:border-cyan-400"
-                  />
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Error Message */}
             {errorMsg && (
@@ -850,21 +1047,35 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-400 via-cyan-500 to-purple-600 text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(0,242,254,0.3)] hover:opacity-95 transition-all cursor-pointer disabled:opacity-50 active:scale-[0.99]"
-            >
-              {isSubmitting ? (
-                <span>Placing Your Order...</span>
-              ) : (
-                <>
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Confirm Order (৳{finalTotalAmount.toLocaleString()})</span>
-                </>
-              )}
-            </button>
+            {/* Submit / Confirm Order CTA */}
+            {!user ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorMsg('Please log in or create an account to confirm your order.');
+                  setIsAuthModalOpen(true, 'checkout');
+                }}
+                className="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-400 via-orange-500 to-pink-600 text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(245,158,11,0.35)] hover:opacity-95 transition-all cursor-pointer active:scale-[0.99]"
+              >
+                <Lock className="w-4 h-4" />
+                <span>Sign In / Register to Confirm (৳{finalTotalAmount.toLocaleString()})</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-400 via-cyan-500 to-purple-600 text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(0,242,254,0.3)] hover:opacity-95 transition-all cursor-pointer disabled:opacity-50 active:scale-[0.99]"
+              >
+                {isSubmitting ? (
+                  <span>Placing Your Order...</span>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Confirm Order (৳{finalTotalAmount.toLocaleString()})</span>
+                  </>
+                )}
+              </button>
+            )}
 
             {/* Trust Badges */}
             <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-400 pt-2 border-t border-white/5">

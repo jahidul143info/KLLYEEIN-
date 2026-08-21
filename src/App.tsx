@@ -6,6 +6,7 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import CartDrawer from './components/CartDrawer';
 import AuthModal from './components/AuthModal';
+import ScrollToTop from './components/ScrollToTop';
 
 import HomePage from './app/page';
 import ProductPage from './app/product/[slug]/page';
@@ -34,6 +35,7 @@ function StorefrontLayout() {
 export default function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <AuthProvider>
         <CartProvider>
           <Routes>

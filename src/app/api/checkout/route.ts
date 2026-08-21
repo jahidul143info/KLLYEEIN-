@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
+import { addOrderToStore } from '../../../lib/ordersStore';
 
 export async function POST(request: Request) {
   try {
@@ -11,36 +11,32 @@ export async function POST(request: Request) {
     }
 
     const orderNumber = `KLY-${Math.floor(100000 + Math.random() * 900000)}`;
-    const orderId = `ord_${Date.now()}`;
 
-    // If Supabase is configured, insert to orders table
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.from('orders').insert({
-          id: orderId,
-          order_number: orderNumber,
-          user_email: userEmail || shippingAddress?.email || 'customer@kllyeein.com',
-          status: 'pending',
-          items: items,
-          total_amount: Number(totalPrice),
-          shipping_fee: Number(shippingFee || 0),
-          payment_method: paymentMethod,
-          shipping_address: {
-            ...shippingAddress,
-            trxId: trxId || '',
-          },
-        });
-      } catch (err) {
-        console.error('Failed to save order to Supabase:', err);
-      }
-    }
+    const newOrder = await addOrderToStore({
+      orderNumber,
+      userEmail: userEmail || shippingAddress?.email || 'customer@kllyeein.com',
+      status: 'pending',
+      items: items,
+      totalAmount: Number(totalPrice),
+      shippingFee: Number(shippingFee || 0),
+      paymentMethod: paymentMethod || 'Cash on Delivery',
+      trxId: trxId || '',
+      shippingAddress: {
+        fullName: shippingAddress?.fullName || 'Customer',
+        phone: shippingAddress?.phone || '',
+        address: shippingAddress?.address || '',
+        city: shippingAddress?.city || 'Dhaka',
+        notes: shippingAddress?.notes || '',
+      },
+    });
 
     return NextResponse.json({
       success: true,
       message: 'Order placed successfully via KLLYEEIN BD Payment Engine',
-      transactionId: orderNumber,
-      orderNumber,
+      transactionId: newOrder.orderNumber,
+      orderNumber: newOrder.orderNumber,
       status: 'pending',
+      order: newOrder,
       details: {
         totalPrice,
         paymentMethod,
@@ -53,4 +49,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: err.message || 'Failed to process checkout' }, { status: 500 });
   }
 }
-

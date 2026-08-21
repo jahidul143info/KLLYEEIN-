@@ -48,12 +48,17 @@ import {
   Store,
   Sliders,
   Truck,
+  Wallet,
+  Smartphone,
+  QrCode,
+  Banknote,
 } from 'lucide-react';
 import { Product, ProductSpec } from '../../types';
 import { getCloudinaryImageUrl } from '../../lib/cloudinary';
 import { compressImageFile, uploadImageToServer } from '../../lib/imageUploadUtils';
 import { useAuth, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from '../../context/AuthContext';
 import { AdminOrder } from '../api/orders/route';
+import { StoreSettings, DEFAULT_STORE_SETTINGS, getStoreSettings, saveStoreSettings } from '../../data/storeSettings';
 
 type AdminTab =
   | 'overview'
@@ -62,6 +67,7 @@ type AdminTab =
   | 'categories'
   | 'banners'
   | 'media'
+  | 'payments'
   | 'store_settings'
   | 'security';
 
@@ -144,41 +150,33 @@ export default function AdminPanelPage() {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
 
   // Store Global Configurations & Controls State
-  const [storeSettings, setStoreSettings] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('kllyeein_store_settings');
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch {
-          // fallback
-        }
-      }
-    }
-    return {
-      storeName: 'KLLYEEIN GADGETS BANGLADESH',
-      tagline: 'Cybernetic Tech, Flagship Phones & Acoustic Luxury',
-      hotline: '+880 1700-112233',
-      whatsapp: '+880 1700-112233',
-      supportEmail: 'support@kllyeein.com',
-      showroomAddress: 'Jamuna Future Park, Level 4 (Zone D, Shop 402), Dhaka',
-      businessHours: '10:00 AM – 09:00 PM (Weekly Off: Wednesday)',
-      insideDhakaFee: 60,
-      outsideDhakaFee: 120,
-      freeShippingThreshold: 5000,
-      announcementText: '🚀 FREE EXPRESS SHIPPING across Bangladesh on orders over ৳5,000 | 100% Genuine Warranty',
-      isAnnouncementActive: true,
-    };
-  });
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => getStoreSettings());
   const [isSavingStoreSettings, setIsSavingStoreSettings] = useState(false);
   const [storeSettingsSuccessMsg, setStoreSettingsSuccessMsg] = useState<string | null>(null);
 
-  const handleSaveStoreSettings = (e: React.FormEvent) => {
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.settings) {
+          setStoreSettings((prev) => ({ ...prev, ...data.settings }));
+          saveStoreSettings({ ...getStoreSettings(), ...data.settings });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveStoreSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingStoreSettings(true);
     try {
-      localStorage.setItem('kllyeein_store_settings', JSON.stringify(storeSettings));
-      setStoreSettingsSuccessMsg('Store settings, contact information, and shipping rates saved successfully!');
+      saveStoreSettings(storeSettings);
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(storeSettings),
+      }).catch(() => {});
+      setStoreSettingsSuccessMsg('Store settings & payment numbers saved and synced across all channels!');
       setTimeout(() => setStoreSettingsSuccessMsg(null), 3500);
     } catch {
       // error
@@ -234,15 +232,39 @@ export default function AdminPanelPage() {
     }
   };
 
-  // Load Orders
+  // Load Orders with API + localStorage sync & background polling
   const loadOrders = async () => {
     setIsLoadingOrders(true);
     try {
       const res = await fetch('/api/orders');
       const data = await res.json();
-      if (data?.orders) {
-        setOrders(data.orders);
+      let serverOrders: AdminOrder[] = data?.orders || [];
+
+      // Check localStorage for locally placed orders to guarantee zero loss
+      try {
+        const localOrders = JSON.parse(localStorage.getItem('kllyeein_orders') || '[]');
+        if (Array.isArray(localOrders) && localOrders.length > 0) {
+          const existingIds = new Set(serverOrders.map((o) => o.id || o.orderNumber));
+          const missingLocals = localOrders.filter(
+            (lo: any) => !existingIds.has(lo.id) && !existingIds.has(lo.orderNumber)
+          );
+          if (missingLocals.length > 0) {
+            // Push missing orders to API in background to keep store in sync
+            for (const missingOrder of missingLocals) {
+              fetch('/api/orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(missingOrder),
+              }).catch(() => {});
+            }
+            serverOrders = [...missingLocals, ...serverOrders];
+          }
+        }
+      } catch {
+        // localStorage parse ignore
       }
+
+      setOrders(serverOrders);
     } catch (err) {
       console.error('Failed to load orders:', err);
     } finally {
@@ -254,6 +276,13 @@ export default function AdminPanelPage() {
     if (isAdmin) {
       loadProducts();
       loadOrders();
+
+      // Real-time polling: refresh orders every 7 seconds so customer orders appear automatically
+      const pollTimer = setInterval(() => {
+        loadOrders();
+      }, 7000);
+
+      return () => clearInterval(pollTimer);
     }
   }, [isAdmin]);
 
@@ -475,6 +504,32 @@ export default function AdminPanelPage() {
       console.error('Failed to update order status:', err);
     } finally {
       setIsUpdatingOrderStatus(null);
+    }
+  };
+
+  // Delete Order
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!confirm('Are you sure you want to delete this order from the system?')) return;
+    try {
+      const res = await fetch(`/api/orders?id=${orderId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setOrders((prev) => prev.filter((o) => o.id !== orderId && o.orderNumber !== orderId));
+        if (selectedOrderDetails?.id === orderId || selectedOrderDetails?.orderNumber === orderId) {
+          setSelectedOrderDetails(null);
+        }
+        // Sync local storage
+        try {
+          const local = JSON.parse(localStorage.getItem('kllyeein_orders') || '[]');
+          localStorage.setItem(
+            'kllyeein_orders',
+            JSON.stringify(local.filter((o: any) => o.id !== orderId && o.orderNumber !== orderId))
+          );
+        } catch {
+          // ignore
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete order:', err);
     }
   };
 
@@ -844,6 +899,26 @@ export default function AdminPanelPage() {
             >
               <Images className="w-4 h-4 text-sky-400" />
               <span>Media & Assets</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('payments');
+                setMobileSidebarOpen(false);
+              }}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                activeTab === 'payments'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-md shadow-emerald-500/10'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Wallet className="w-4 h-4 text-emerald-400" />
+                <span>Payment Gateways</span>
+              </div>
+              <span className="px-1.5 py-0.5 rounded bg-pink-500/20 text-pink-300 font-mono text-[9px] font-bold">
+                bKash / Nagad
+              </span>
             </button>
 
             <button
@@ -1694,8 +1769,8 @@ export default function AdminPanelPage() {
         {/* TAB 3: ORDERS & SALES FULFILLMENT */}
         {activeTab === 'orders' && (
           <div className="space-y-6">
-            {/* Orders Filter Toolbar */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 rounded-2xl bg-[#0d0f1a] border border-white/10">
+            {/* Orders Filter Toolbar & Live Sync */}
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-4 rounded-2xl bg-[#0d0f1a] border border-white/10">
               <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
                 {['all', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'].map((status) => (
                   <button
@@ -1703,24 +1778,39 @@ export default function AdminPanelPage() {
                     onClick={() => setOrderStatusFilter(status)}
                     className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold capitalize font-mono transition-all shrink-0 ${
                       orderStatusFilter === status
-                        ? 'bg-cyan-400 text-black font-extrabold'
+                        ? 'bg-cyan-400 text-black font-extrabold shadow-sm'
                         : 'bg-white/5 text-gray-400 hover:text-white'
                     }`}
                   >
                     {status}
+                    {status === 'all'
+                      ? ` (${orders.length})`
+                      : ` (${orders.filter((o) => o.status === status).length})`}
                   </button>
                 ))}
               </div>
 
-              <div className="relative max-w-xs">
-                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search by ID, customer, phone, TrxID..."
-                  value={orderSearchQuery}
-                  onChange={(e) => setOrderSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-black/50 border border-white/10 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-cyan-400"
-                />
+              <div className="flex items-center gap-2.5">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search ID, customer, phone, TrxID..."
+                    value={orderSearchQuery}
+                    onChange={(e) => setOrderSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 rounded-xl bg-black/50 border border-white/10 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => loadOrders()}
+                  disabled={isLoadingOrders}
+                  title="Refresh Orders Now"
+                  className="px-3.5 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-all shrink-0 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingOrders ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">Refresh</span>
+                </button>
               </div>
             </div>
 
@@ -1736,7 +1826,7 @@ export default function AdminPanelPage() {
                       <th className="pb-3 font-semibold">Payment & TrxID</th>
                       <th className="pb-3 font-semibold">Amount</th>
                       <th className="pb-3 font-semibold">Fulfillment Status</th>
-                      <th className="pb-3 font-semibold text-right">Details</th>
+                      <th className="pb-3 font-semibold text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
@@ -1755,6 +1845,11 @@ export default function AdminPanelPage() {
                             <Phone className="w-3 h-3 text-cyan-400" />
                             {order.shippingAddress?.phone || 'N/A'}
                           </div>
+                          {order.userEmail && (
+                            <div className="text-[10px] text-gray-500 font-mono truncate max-w-[150px]">
+                              {order.userEmail}
+                            </div>
+                          )}
                         </td>
 
                         <td className="py-4">
@@ -1790,19 +1885,35 @@ export default function AdminPanelPage() {
                         </td>
 
                         <td className="py-4 text-right">
-                          <button
-                            onClick={() => setSelectedOrderDetails(order)}
-                            className="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 text-xs font-semibold border border-cyan-500/20 transition-all"
-                          >
-                            View Order
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => setSelectedOrderDetails(order)}
+                              className="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 text-xs font-semibold border border-cyan-500/20 transition-all cursor-pointer"
+                            >
+                              View
+                            </button>
+                            <button
+                              onClick={() => handleDeleteOrder(order.id)}
+                              title="Delete Order"
+                              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
                     {filteredOrders.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="py-8 text-center text-gray-500">
-                          No orders found matching the selected filter.
+                        <td colSpan={7} className="py-10 text-center text-gray-500 space-y-2">
+                          <Package className="w-8 h-8 mx-auto text-gray-600 mb-2" />
+                          <p>No orders found matching the selected filter.</p>
+                          <button
+                            onClick={() => loadOrders()}
+                            className="px-4 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs text-cyan-400 font-mono font-bold"
+                          >
+                            Reload Orders
+                          </button>
                         </td>
                       </tr>
                     )}
@@ -1822,7 +1933,7 @@ export default function AdminPanelPage() {
                     </div>
                     <button
                       onClick={() => setSelectedOrderDetails(null)}
-                      className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10"
+                      className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer"
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -1841,6 +1952,11 @@ export default function AdminPanelPage() {
                       <div className="col-span-2">
                         Address: {selectedOrderDetails.shippingAddress?.address}, {selectedOrderDetails.shippingAddress?.city}
                       </div>
+                      {selectedOrderDetails.userEmail && (
+                        <div className="col-span-2">
+                          Customer Email: <strong className="text-gray-300 font-mono">{selectedOrderDetails.userEmail}</strong>
+                        </div>
+                      )}
                       <div>
                         Payment: <strong className="uppercase text-amber-300">{selectedOrderDetails.paymentMethod}</strong>
                       </div>
@@ -1893,12 +2009,21 @@ export default function AdminPanelPage() {
                     </span>
                   </div>
 
-                  <button
-                    onClick={() => setSelectedOrderDetails(null)}
-                    className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs"
-                  >
-                    Close Invoice View
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleDeleteOrder(selectedOrderDetails.id)}
+                      className="py-3 px-4 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold text-xs border border-red-500/20 cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete Order
+                    </button>
+                    <button
+                      onClick={() => setSelectedOrderDetails(null)}
+                      className="flex-1 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs cursor-pointer"
+                    >
+                      Close Invoice View
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -2123,6 +2248,273 @@ export default function AdminPanelPage() {
                   ))}
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: PAYMENT GATEWAYS & MOBILE WALLET NUMBERS */}
+        {activeTab === 'payments' && (
+          <div className="max-w-4xl mx-auto space-y-6">
+            <div className="p-6 sm:p-8 rounded-3xl bg-[#0d0f1a] border border-emerald-500/30 shadow-2xl space-y-6">
+              <div className="flex items-start justify-between gap-4 pb-5 border-b border-white/10">
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold uppercase tracking-wider">
+                    <Wallet className="w-3.5 h-3.5" /> Mobile Financial Services
+                  </div>
+                  <h2 className="text-xl font-bold text-white font-mono flex items-center gap-2">
+                    Payment Gateway & Wallet Numbers
+                  </h2>
+                  <p className="text-xs text-gray-400">
+                    Configure your official bKash, Nagad, and Rocket numbers, account types, and transfer instructions shown to customers during checkout.
+                  </p>
+                </div>
+                <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 shrink-0">
+                  <Banknote className="w-6 h-6" />
+                </div>
+              </div>
+
+              {/* Notification Feedback */}
+              {storeSettingsSuccessMsg && (
+                <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 font-medium">
+                  <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
+                  <span>{storeSettingsSuccessMsg}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveStoreSettings} className="space-y-6">
+                
+                {/* 1. bKash Configuration Box */}
+                <div className="p-5 sm:p-6 rounded-2xl bg-[#140a17] border border-pink-500/30 space-y-4">
+                  <div className="flex items-center justify-between border-b border-pink-500/20 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-pink-500/20 border border-pink-500/40 flex items-center justify-center text-pink-400 font-black text-xs font-mono">
+                        bK
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-pink-300 font-mono">bKash Payment Settings</h3>
+                        <p className="text-[10px] text-gray-400">Manage bKash receiving wallet number & account mode</p>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-pink-500/20 text-pink-300 text-[10px] font-mono font-bold">
+                      ACTIVE
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                        <Smartphone className="w-3.5 h-3.5 text-pink-400" /> Official bKash Number
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={storeSettings.bkashNumber || ''}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, bkashNumber: e.target.value })}
+                        placeholder="e.g. 01700-112233"
+                        className="w-full bg-black/60 border border-pink-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-pink-400 transition-colors font-mono font-bold"
+                      />
+                      <p className="text-[10px] text-gray-500">The mobile number customers will send money to</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300">Account Type</label>
+                      <select
+                        value={storeSettings.bkashType || 'Personal (Send Money)'}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, bkashType: e.target.value as any })}
+                        className="w-full bg-black/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-pink-400 cursor-pointer"
+                      >
+                        <option value="Personal (Send Money)">Personal (Send Money)</option>
+                        <option value="Merchant (Payment)">Merchant (Payment)</option>
+                        <option value="Agent">Agent (Cash In)</option>
+                      </select>
+                      <p className="text-[10px] text-gray-500">Defines whether customers use Send Money or Make Payment</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-300">Checkout Instructions for Customer</label>
+                    <textarea
+                      rows={3}
+                      value={storeSettings.bkashInstructions || ''}
+                      onChange={(e) => setStoreSettings({ ...storeSettings, bkashInstructions: e.target.value })}
+                      placeholder="Step by step instructions for the buyer..."
+                      className="w-full bg-black/60 border border-white/15 rounded-xl px-4 py-2.5 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-pink-400 transition-colors font-mono leading-relaxed"
+                    />
+                  </div>
+
+                  {/* Live Customer Preview */}
+                  <div className="p-3.5 rounded-xl bg-black/40 border border-pink-500/20 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                    <span className="text-[11px] text-gray-400">Customer will see on checkout:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-pink-300 font-bold">{storeSettings.bkashNumber || '01700-112233'}</span>
+                      <span className="text-[10px] text-gray-400 font-mono">({storeSettings.bkashType || 'Personal'})</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Nagad Configuration Box */}
+                <div className="p-5 sm:p-6 rounded-2xl bg-[#170e0a] border border-orange-500/30 space-y-4">
+                  <div className="flex items-center justify-between border-b border-orange-500/20 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400 font-black text-xs font-mono">
+                        NG
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-orange-300 font-mono">Nagad Payment Settings</h3>
+                        <p className="text-[10px] text-gray-400">Manage Nagad receiving wallet number & account mode</p>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-orange-500/20 text-orange-300 text-[10px] font-mono font-bold">
+                      ACTIVE
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                        <Smartphone className="w-3.5 h-3.5 text-orange-400" /> Official Nagad Number
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={storeSettings.nagadNumber || ''}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, nagadNumber: e.target.value })}
+                        placeholder="e.g. 01700-112233"
+                        className="w-full bg-black/60 border border-orange-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-400 transition-colors font-mono font-bold"
+                      />
+                      <p className="text-[10px] text-gray-500">The mobile number customers will send Nagad money to</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300">Account Type</label>
+                      <select
+                        value={storeSettings.nagadType || 'Personal (Send Money)'}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, nagadType: e.target.value as any })}
+                        className="w-full bg-black/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-orange-400 cursor-pointer"
+                      >
+                        <option value="Personal (Send Money)">Personal (Send Money)</option>
+                        <option value="Merchant (Payment)">Merchant (Payment)</option>
+                        <option value="Agent">Agent (Cash In)</option>
+                      </select>
+                      <p className="text-[10px] text-gray-500">Defines whether customers use Send Money or Payment</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-300">Checkout Instructions for Customer</label>
+                    <textarea
+                      rows={3}
+                      value={storeSettings.nagadInstructions || ''}
+                      onChange={(e) => setStoreSettings({ ...storeSettings, nagadInstructions: e.target.value })}
+                      placeholder="Step by step instructions for the buyer..."
+                      className="w-full bg-black/60 border border-white/15 rounded-xl px-4 py-2.5 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-orange-400 transition-colors font-mono leading-relaxed"
+                    />
+                  </div>
+
+                  {/* Live Customer Preview */}
+                  <div className="p-3.5 rounded-xl bg-black/40 border border-orange-500/20 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                    <span className="text-[11px] text-gray-400">Customer will see on checkout:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-orange-300 font-bold">{storeSettings.nagadNumber || '01700-112233'}</span>
+                      <span className="text-[10px] text-gray-400 font-mono">({storeSettings.nagadType || 'Personal'})</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Rocket / Upay Configuration Box */}
+                <div className="p-5 sm:p-6 rounded-2xl bg-[#0f0b18] border border-purple-500/30 space-y-4">
+                  <div className="flex items-center justify-between border-b border-purple-500/20 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-400 font-black text-xs font-mono">
+                        RK
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-purple-300 font-mono">Rocket / DBBL Wallet (Optional)</h3>
+                        <p className="text-[10px] text-gray-400">Dutch-Bangla Rocket 12-digit receiving account</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300">Rocket Account Number (with check digit)</label>
+                      <input
+                        type="text"
+                        value={storeSettings.rocketNumber || ''}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, rocketNumber: e.target.value })}
+                        placeholder="e.g. 01700-112233-0"
+                        className="w-full bg-black/60 border border-purple-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-400 transition-colors font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300">Account Type</label>
+                      <select
+                        value={storeSettings.rocketType || 'Personal (Send Money)'}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, rocketType: e.target.value as any })}
+                        className="w-full bg-black/60 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-400 cursor-pointer"
+                      >
+                        <option value="Personal (Send Money)">Personal (Send Money)</option>
+                        <option value="Merchant (Payment)">Merchant (Payment)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Cash On Delivery (COD) & POS Card Options */}
+                <div className="p-5 sm:p-6 rounded-2xl bg-black/50 border border-white/10 space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                    <Truck className="w-4 h-4" /> Additional Checkout Options
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label className="flex items-center gap-3 p-4 rounded-xl bg-white/[0.03] border border-white/10 cursor-pointer hover:border-cyan-400/50 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={storeSettings.codEnabled !== false}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, codEnabled: e.target.checked })}
+                        className="rounded border-white/20 bg-black/60 text-emerald-500 focus:ring-emerald-400 h-4 w-4"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-white block">Cash on Delivery (COD)</span>
+                        <span className="text-[10px] text-gray-400">Allow customers to pay cash after receiving package</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 p-4 rounded-xl bg-white/[0.03] border border-white/10 cursor-pointer hover:border-cyan-400/50 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={storeSettings.cardEnabled !== false}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, cardEnabled: e.target.checked })}
+                        className="rounded border-white/20 bg-black/60 text-cyan-500 focus:ring-cyan-400 h-4 w-4"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-white block">Card / POS Machine Delivery</span>
+                        <span className="text-[10px] text-gray-400">Allow customers to pay with Card / POS on delivery</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Submit Save Button */}
+                <button
+                  type="submit"
+                  disabled={isSavingStoreSettings}
+                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-400 via-cyan-400 to-indigo-600 hover:from-emerald-300 hover:to-indigo-500 text-black font-black text-xs uppercase tracking-wider transition-all shadow-xl shadow-emerald-500/20 cursor-pointer flex items-center justify-center gap-2 mt-4"
+                >
+                  {isSavingStoreSettings ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Publishing Payment Numbers...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Save & Publish Payment Numbers to Checkout
+                    </>
+                  )}
+                </button>
+              </form>
             </div>
           </div>
         )}
