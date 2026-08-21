@@ -45,6 +45,9 @@ import {
   Tag,
   Menu,
   Camera,
+  Store,
+  Sliders,
+  Truck,
 } from 'lucide-react';
 import { Product, ProductSpec } from '../../types';
 import { getCloudinaryImageUrl } from '../../lib/cloudinary';
@@ -59,6 +62,7 @@ type AdminTab =
   | 'categories'
   | 'banners'
   | 'media'
+  | 'store_settings'
   | 'security';
 
 export default function AdminPanelPage() {
@@ -138,7 +142,50 @@ export default function AdminPanelPage() {
 
   // Copy Feedback
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
-  const [sqlCopied, setSqlCopied] = useState(false);
+
+  // Store Global Configurations & Controls State
+  const [storeSettings, setStoreSettings] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('kllyeein_store_settings');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          // fallback
+        }
+      }
+    }
+    return {
+      storeName: 'KLLYEEIN GADGETS BANGLADESH',
+      tagline: 'Cybernetic Tech, Flagship Phones & Acoustic Luxury',
+      hotline: '+880 1700-112233',
+      whatsapp: '+880 1700-112233',
+      supportEmail: 'support@kllyeein.com',
+      showroomAddress: 'Jamuna Future Park, Level 4 (Zone D, Shop 402), Dhaka',
+      businessHours: '10:00 AM – 09:00 PM (Weekly Off: Wednesday)',
+      insideDhakaFee: 60,
+      outsideDhakaFee: 120,
+      freeShippingThreshold: 5000,
+      announcementText: '🚀 FREE EXPRESS SHIPPING across Bangladesh on orders over ৳5,000 | 100% Genuine Warranty',
+      isAnnouncementActive: true,
+    };
+  });
+  const [isSavingStoreSettings, setIsSavingStoreSettings] = useState(false);
+  const [storeSettingsSuccessMsg, setStoreSettingsSuccessMsg] = useState<string | null>(null);
+
+  const handleSaveStoreSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingStoreSettings(true);
+    try {
+      localStorage.setItem('kllyeein_store_settings', JSON.stringify(storeSettings));
+      setStoreSettingsSuccessMsg('Store settings, contact information, and shipping rates saved successfully!');
+      setTimeout(() => setStoreSettingsSuccessMsg(null), 3500);
+    } catch {
+      // error
+    } finally {
+      setIsSavingStoreSettings(false);
+    }
+  };
 
   // New Product Form State
   const [productForm, setProductForm] = useState({
@@ -801,6 +848,21 @@ export default function AdminPanelPage() {
 
             <button
               onClick={() => {
+                setActiveTab('store_settings');
+                setMobileSidebarOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                activeTab === 'store_settings'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-md shadow-cyan-500/10'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Store className="w-4 h-4 text-pink-400" />
+              <span>Store & Delivery Rates</span>
+            </button>
+
+            <button
+              onClick={() => {
                 setActiveTab('security');
                 setMobileSidebarOpen(false);
               }}
@@ -866,6 +928,7 @@ export default function AdminPanelPage() {
               {activeTab === 'categories' && 'Store Categories & Hierarchy'}
               {activeTab === 'banners' && 'Hero Promotions & Banners'}
               {activeTab === 'media' && 'Store Media & Asset Library'}
+              {activeTab === 'store_settings' && 'Store Configuration & Delivery Rates'}
               {activeTab === 'security' && 'Admin Credentials & Access Control'}
             </h1>
           </div>
@@ -2060,6 +2123,222 @@ export default function AdminPanelPage() {
                   ))}
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 7: STORE SETTINGS & DELIVERY CONFIGURATION */}
+        {activeTab === 'store_settings' && (
+          <div className="max-w-4xl mx-auto space-y-6">
+            <div className="p-6 sm:p-8 rounded-3xl bg-[#0d0f1a] border border-cyan-500/30 shadow-2xl space-y-6">
+              <div className="flex items-start justify-between gap-4 pb-5 border-b border-white/10">
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-bold uppercase tracking-wider">
+                    <Sliders className="w-3.5 h-3.5" /> Store Controls
+                  </div>
+                  <h2 className="text-xl font-bold text-white font-mono flex items-center gap-2">
+                    Store Configuration & Delivery Rates
+                  </h2>
+                  <p className="text-xs text-gray-400">
+                    Manage store branding details, contact hotline, physical showroom address, delivery charges, and promotional announcement banners.
+                  </p>
+                </div>
+                <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-400 shrink-0">
+                  <Store className="w-6 h-6" />
+                </div>
+              </div>
+
+              {/* Notification Feedback */}
+              {storeSettingsSuccessMsg && (
+                <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 font-medium">
+                  <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
+                  <span>{storeSettingsSuccessMsg}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveStoreSettings} className="space-y-6">
+                {/* 1. General Branding */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                    <Building className="w-4 h-4" /> 1. Brand & Contact Information
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300">Store Brand Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={storeSettings.storeName}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, storeName: e.target.value })}
+                        className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-colors"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300">Store Tagline / Slogan</label>
+                      <input
+                        type="text"
+                        value={storeSettings.tagline}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, tagline: e.target.value })}
+                        className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-colors"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-cyan-400" /> Customer Support Hotline
+                      </label>
+                      <input
+                        type="text"
+                        value={storeSettings.hotline}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, hotline: e.target.value })}
+                        className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-colors font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-emerald-400" /> WhatsApp Support Number
+                      </label>
+                      <input
+                        type="text"
+                        value={storeSettings.whatsapp}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, whatsapp: e.target.value })}
+                        className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-colors font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-cyan-400" /> Support Email
+                      </label>
+                      <input
+                        type="email"
+                        value={storeSettings.supportEmail}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, supportEmail: e.target.value })}
+                        className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-colors font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-cyan-400" /> Business Working Hours
+                      </label>
+                      <input
+                        type="text"
+                        value={storeSettings.businessHours}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, businessHours: e.target.value })}
+                        className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-cyan-400" /> Physical Showroom / Outlet Address
+                    </label>
+                    <input
+                      type="text"
+                      value={storeSettings.showroomAddress}
+                      onChange={(e) => setStoreSettings({ ...storeSettings, showroomAddress: e.target.value })}
+                      className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Delivery Rates & Shipping Fees */}
+                <div className="pt-4 border-t border-white/10 space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                    <Truck className="w-4 h-4" /> 2. Delivery Rates & Shipping Configuration
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300">Inside Dhaka (৳)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={storeSettings.insideDhakaFee}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, insideDhakaFee: Number(e.target.value) || 0 })}
+                        className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400 transition-colors font-mono"
+                      />
+                      <p className="text-[10px] text-gray-500">Standard inside capital fee</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300">Outside Dhaka (৳)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={storeSettings.outsideDhakaFee}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, outsideDhakaFee: Number(e.target.value) || 0 })}
+                        className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400 transition-colors font-mono"
+                      />
+                      <p className="text-[10px] text-gray-500">Nationwide courier fee</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-300">Free Shipping Over (৳)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={storeSettings.freeShippingThreshold}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, freeShippingThreshold: Number(e.target.value) || 0 })}
+                        className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-emerald-400 transition-colors font-mono"
+                      />
+                      <p className="text-[10px] text-gray-500">Cart subtotal for ৳0 fee</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Promotional Announcement Bar */}
+                <div className="pt-4 border-t border-white/10 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4" /> 3. Storewide Announcement Banner
+                    </h3>
+                    <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={storeSettings.isAnnouncementActive}
+                        onChange={(e) => setStoreSettings({ ...storeSettings, isAnnouncementActive: e.target.checked })}
+                        className="rounded border-white/20 bg-black/60 text-purple-500 focus:ring-purple-400 h-4 w-4"
+                      />
+                      <span>Active on Store</span>
+                    </label>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <input
+                      type="text"
+                      value={storeSettings.announcementText}
+                      onChange={(e) => setStoreSettings({ ...storeSettings, announcementText: e.target.value })}
+                      placeholder="e.g. 🚀 FREE EXPRESS SHIPPING on orders over ৳5,000"
+                      className="w-full bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-400 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {/* Submit Save Button */}
+                <button
+                  type="submit"
+                  disabled={isSavingStoreSettings}
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-400 to-indigo-600 hover:from-cyan-300 hover:to-indigo-500 text-black font-extrabold text-xs uppercase tracking-wider transition-all shadow-lg shadow-cyan-500/20 cursor-pointer flex items-center justify-center gap-2 mt-4"
+                >
+                  {isSavingStoreSettings ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Saving Store Settings...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Save & Update Store Settings
+                    </>
+                  )}
+                </button>
+              </form>
             </div>
           </div>
         )}

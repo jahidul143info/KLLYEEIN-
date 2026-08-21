@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   X,
   Mail,
@@ -17,13 +17,15 @@ import {
   EyeOff,
   RefreshCw,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, DEFAULT_ADMIN_EMAIL } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 
 export default function AuthModal() {
+  const navigate = useNavigate();
   const {
     user,
     isAdmin,
+    adminCredentials,
     isAuthModalOpen,
     setIsAuthModalOpen,
     signInWithGoogle,
@@ -70,6 +72,16 @@ export default function AuthModal() {
       const res = await signInWithPassword(email, password);
       if (res?.error) {
         setErrorMessage(res.error);
+      } else {
+        const cleanEmail = email.trim().toLowerCase();
+        const isAdminAccount =
+          cleanEmail === adminCredentials.email.toLowerCase() ||
+          cleanEmail === DEFAULT_ADMIN_EMAIL.toLowerCase();
+
+        setIsAuthModalOpen(false);
+        if (isAdminAccount) {
+          navigate('/admin');
+        }
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Sign in failed. Please try again.');
