@@ -113,6 +113,7 @@ export default function Footer() {
         <div>
           <h3 className="text-xs font-bold uppercase tracking-wider text-white mb-4 font-mono">Customer Care</h3>
           <ul className="space-y-2.5 text-xs">
+            <li><Link to="/track" className="text-cyan-400 font-bold hover:underline transition-colors flex items-center gap-1.5"><Truck className="w-3.5 h-3.5" /> Track Order Status</Link></li>
             <li><Link to="/checkout" className="hover:text-cyan-400 transition-colors">Express Checkout</Link></li>
             <li><a href="#products" onClick={() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-cyan-400 transition-colors cursor-pointer">Explore Catalog</a></li>
             <li><span className="text-gray-400 hover:text-white cursor-pointer">Official Warranty Policy</span></li>

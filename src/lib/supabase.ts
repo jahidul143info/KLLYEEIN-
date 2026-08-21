@@ -111,12 +111,34 @@ export const supabase = getSupabaseClient();
 /**
  * SQL Setup string provided for users to copy and run in their Supabase SQL Editor
  */
-export const SUPABASE_SQL_SCHEMA = `-- KLLYEEIN Gadgets eCommerce Supabase Full Schema & Initial Data Setup
--- Copy and paste this complete script into your Supabase SQL Editor and click 'RUN'
+export const SUPABASE_SQL_SCHEMA = `-- ==============================================================================
+-- KLLYEEIN GADGETS BANGLADESH - COMPLETE PRODUCTION DATABASE SCHEMA & SEED DATA
+-- Version: 2.5 (Latest with Dynamic Payment Gateways, Orders & Authentication)
+-- Compatible with: Supabase / PostgreSQL 14+
+-- ==============================================================================
 
--- ================================================
--- 1. PRODUCTS TABLE (Stores Cloudinary Image URLs)
--- ================================================
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ==============================================================================
+-- 1. USERS & PROFILES TABLE (Integrated with Supabase Auth)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT UNIQUE NOT NULL,
+  full_name TEXT,
+  phone TEXT,
+  address TEXT,
+  city TEXT DEFAULT 'Dhaka',
+  role TEXT DEFAULT 'customer' CHECK (role IN ('customer', 'admin')),
+  avatar_url TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ==============================================================================
+-- 2. PRODUCTS TABLE (Cybernetic Tech, Smartphones & Luxury Audio)
+-- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.products (
   id TEXT PRIMARY KEY DEFAULT ('prod_' || gen_random_uuid()::text),
   name TEXT NOT NULL,
@@ -124,37 +146,38 @@ CREATE TABLE IF NOT EXISTS public.products (
   category TEXT NOT NULL,
   tagline TEXT,
   description TEXT,
-  price NUMERIC NOT NULL,
-  original_price NUMERIC,
+  price NUMERIC(12,2) NOT NULL,
+  original_price NUMERIC(12,2),
   images TEXT[] DEFAULT '{}',
   specs JSONB DEFAULT '[]'::jsonb,
   is_featured BOOLEAN DEFAULT false,
   is_trending BOOLEAN DEFAULT false,
   is_new_release BOOLEAN DEFAULT true,
-  stock INT DEFAULT 15,
-  rating NUMERIC DEFAULT 5.0,
+  stock INT DEFAULT 20,
+  rating NUMERIC(3,2) DEFAULT 5.0,
   review_count INT DEFAULT 1,
   tags TEXT[] DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ================================================
--- 2. CATEGORIES TABLE
--- ================================================
+-- ==============================================================================
+-- 3. CATEGORIES TABLE
+-- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.categories (
   id TEXT PRIMARY KEY DEFAULT ('cat_' || gen_random_uuid()::text),
   name TEXT NOT NULL,
   slug TEXT UNIQUE NOT NULL,
+  description TEXT,
   image_url TEXT,
   icon TEXT,
   item_count INT DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ================================================
--- 3. HERO PROMO BANNERS TABLE
--- ================================================
+-- ==============================================================================
+-- 4. HERO PROMO BANNERS TABLE
+-- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.banners (
   id TEXT PRIMARY KEY DEFAULT ('banner_' || gen_random_uuid()::text),
   title TEXT NOT NULL,
@@ -167,32 +190,113 @@ CREATE TABLE IF NOT EXISTS public.banners (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ================================================
--- 4. ORDERS & CHECKOUT TABLE
--- ================================================
+-- ==============================================================================
+-- 5. ORDERS & CHECKOUT TABLE (Full Customer Details & TrxID Sync)
+-- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.orders (
   id TEXT PRIMARY KEY DEFAULT ('ord_' || gen_random_uuid()::text),
   order_number TEXT UNIQUE NOT NULL,
   user_email TEXT,
-  status TEXT DEFAULT 'pending',
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled')),
   items JSONB NOT NULL,
-  total_amount NUMERIC NOT NULL,
-  shipping_fee NUMERIC DEFAULT 0,
+  total_amount NUMERIC(12,2) NOT NULL,
+  shipping_fee NUMERIC(12,2) DEFAULT 0,
+  discount_amount NUMERIC(12,2) DEFAULT 0,
   payment_method TEXT NOT NULL,
+  trx_id TEXT,
   shipping_address JSONB NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ==============================================================================
+-- 6. STORE SETTINGS & PAYMENT GATEWAYS CONFIGURATION TABLE
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.store_settings (
+  id TEXT PRIMARY KEY DEFAULT 'default_settings',
+  store_name TEXT DEFAULT 'KLLYEEIN GADGETS BANGLADESH',
+  tagline TEXT DEFAULT 'Cybernetic Tech, Flagship Phones & Acoustic Luxury',
+  hotline TEXT DEFAULT '+880 1700-112233',
+  whatsapp TEXT DEFAULT '+880 1700-112233',
+  support_email TEXT DEFAULT 'support@kllyeein.com',
+  showroom_address TEXT DEFAULT 'Jamuna Future Park, Level 4 (Zone D, Shop 402), Dhaka',
+  business_hours TEXT DEFAULT '10:00 AM – 09:00 PM (Weekly Off: Wednesday)',
+  inside_dhaka_fee NUMERIC(8,2) DEFAULT 60.00,
+  outside_dhaka_fee NUMERIC(8,2) DEFAULT 120.00,
+  free_shipping_threshold NUMERIC(10,2) DEFAULT 5000.00,
+  announcement_text TEXT DEFAULT '🚀 FREE EXPRESS SHIPPING across Bangladesh on orders over ৳5,000 | 100% Genuine Warranty',
+  is_announcement_active BOOLEAN DEFAULT true,
+
+  -- bKash Configuration
+  bkash_number TEXT DEFAULT '01700-112233',
+  bkash_type TEXT DEFAULT 'Personal (Send Money)',
+  bkash_instructions TEXT DEFAULT '1. Open bKash App or dial *247#\n2. Select "Send Money"\n3. Enter the bKash Number given above\n4. Enter payable total amount\n5. Enter Reference: KLLY\n6. Copy and paste TrxID below.',
+  bkash_qr_url TEXT,
+
+  -- Nagad Configuration
+  nagad_number TEXT DEFAULT '01700-112233',
+  nagad_type TEXT DEFAULT 'Personal (Send Money)',
+  nagad_instructions TEXT DEFAULT '1. Open Nagad App or dial *167#\n2. Choose "Send Money"\n3. Send total amount to the number above\n4. Paste the Transaction ID (TrxID) below.',
+  nagad_qr_url TEXT,
+
+  -- Rocket / DBBL Configuration
+  rocket_number TEXT DEFAULT '01700-112233-0',
+  rocket_type TEXT DEFAULT 'Personal (Send Money)',
+  rocket_instructions TEXT,
+
+  -- Checkout Methods Toggle
+  cod_enabled BOOLEAN DEFAULT true,
+  cod_instructions TEXT DEFAULT 'Pay with cash in hand after inspecting the product upon arrival at your doorstep.',
+  card_enabled BOOLEAN DEFAULT true,
+
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ==============================================================================
+-- 7. REVIEWS & RATINGS TABLE
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.reviews (
+  id TEXT PRIMARY KEY DEFAULT ('rev_' || gen_random_uuid()::text),
+  product_id TEXT NOT NULL,
+  user_name TEXT NOT NULL,
+  user_email TEXT,
+  rating NUMERIC(2,1) DEFAULT 5.0 CHECK (rating >= 1 AND rating <= 5),
+  comment TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ================================================
--- 5. ENABLE ROW LEVEL SECURITY (RLS)
--- ================================================
+-- ==============================================================================
+-- 8. COUPONS & DISCOUNTS TABLE
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.coupons (
+  id TEXT PRIMARY KEY DEFAULT ('cpn_' || gen_random_uuid()::text),
+  code TEXT UNIQUE NOT NULL,
+  discount_type TEXT DEFAULT 'percentage' CHECK (discount_type IN ('percentage', 'fixed')),
+  discount_value NUMERIC(10,2) NOT NULL,
+  min_order_amount NUMERIC(10,2) DEFAULT 0,
+  is_active BOOLEAN DEFAULT true,
+  expires_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ==============================================================================
+-- 9. ROW LEVEL SECURITY (RLS) POLICIES
+-- ==============================================================================
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.banners ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.coupons ENABLE ROW LEVEL SECURITY;
 
--- Disable strict policy restrictions for anon key so public site and admin panel work smoothly
-DROP POLICY IF EXISTS "Public read products" ON public.products;
+-- Seamless Read/Write Policies for Frontend and Admin Panel
+DROP POLICY IF EXISTS "Allow public read access to profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Allow user update to own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Full access profiles" ON public.profiles;
+CREATE POLICY "Full access profiles" ON public.profiles FOR ALL USING (true) WITH CHECK (true);
+
 DROP POLICY IF EXISTS "Full access products" ON public.products;
 CREATE POLICY "Full access products" ON public.products FOR ALL USING (true) WITH CHECK (true);
 
@@ -205,16 +309,108 @@ CREATE POLICY "Full access banners" ON public.banners FOR ALL USING (true) WITH 
 DROP POLICY IF EXISTS "Full access orders" ON public.orders;
 CREATE POLICY "Full access orders" ON public.orders FOR ALL USING (true) WITH CHECK (true);
 
--- ================================================
--- 6. INDEXES FOR PERFORMANCE
--- ================================================
+DROP POLICY IF EXISTS "Full access store_settings" ON public.store_settings;
+CREATE POLICY "Full access store_settings" ON public.store_settings FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Full access reviews" ON public.reviews;
+CREATE POLICY "Full access reviews" ON public.reviews FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Full access coupons" ON public.coupons;
+CREATE POLICY "Full access coupons" ON public.coupons FOR ALL USING (true) WITH CHECK (true);
+
+-- ==============================================================================
+-- 10. AUTH TRIGGER (Auto-create profile when a new user signs up)
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, full_name, role)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
+    CASE 
+      WHEN NEW.email = 'admin.osman@gmail.com' OR NEW.email ILIKE '%admin%' THEN 'admin'
+      ELSE 'customer'
+    END
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET email = EXCLUDED.email;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ==============================================================================
+-- 11. INDEXES FOR PERFORMANCE
+-- ==============================================================================
 CREATE INDEX IF NOT EXISTS idx_products_category ON public.products(category);
 CREATE INDEX IF NOT EXISTS idx_products_slug ON public.products(slug);
 CREATE INDEX IF NOT EXISTS idx_products_featured ON public.products(is_featured);
+CREATE INDEX IF NOT EXISTS idx_orders_user_email ON public.orders(user_email);
+CREATE INDEX IF NOT EXISTS idx_orders_order_number ON public.orders(order_number);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON public.orders(status);
+CREATE INDEX IF NOT EXISTS idx_reviews_product_id ON public.reviews(product_id);
 
--- ================================================
--- 7. INITIAL SEED DATA (PRODUCTS WITH CLOUDINARY URLS)
--- ================================================
+-- ==============================================================================
+-- 12. INITIAL SEED DATA
+-- ==============================================================================
+
+-- A. Default Store Settings & Payment Numbers
+INSERT INTO public.store_settings (
+  id, store_name, tagline, hotline, whatsapp, support_email, showroom_address, 
+  business_hours, inside_dhaka_fee, outside_dhaka_fee, free_shipping_threshold,
+  announcement_text, is_announcement_active, bkash_number, bkash_type, 
+  nagad_number, nagad_type, rocket_number, rocket_type, cod_enabled, card_enabled
+)
+VALUES (
+  'default_settings',
+  'KLLYEEIN GADGETS BANGLADESH',
+  'Cybernetic Tech, Flagship Phones & Acoustic Luxury',
+  '+880 1700-112233',
+  '+880 1700-112233',
+  'support@kllyeein.com',
+  'Jamuna Future Park, Level 4 (Zone D, Shop 402), Dhaka',
+  '10:00 AM – 09:00 PM (Weekly Off: Wednesday)',
+  60.00,
+  120.00,
+  5000.00,
+  '🚀 FREE EXPRESS SHIPPING across Bangladesh on orders over ৳5,000 | 100% Genuine Warranty',
+  true,
+  '01700-112233',
+  'Personal (Send Money)',
+  '01700-112233',
+  'Personal (Send Money)',
+  '01700-112233-0',
+  'Personal (Send Money)',
+  true,
+  true
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- B. Categories
+INSERT INTO public.categories (id, name, slug, description, image_url, icon, item_count)
+VALUES
+('cat-phones', 'Smartphones & Foldables', 'phones', 'Flagship neural devices, quantum displays, aerospace titanium bodies.', 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?q=80&w=800', 'Smartphone', 12),
+('cat-audio', 'Neural Audio & Acoustics', 'audio', 'Zero-latency spatial sound, planar magnetic drivers, active noise isolation.', 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=800', 'Headphones', 16),
+('cat-wearables', 'Quantum Wearables', 'wearables', 'Cybernetic health trackers, sapphire glass smartwatches, biometric sensors.', 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=800', 'Watch', 9),
+('cat-accessories', 'Cyber Accessories', 'accessories', 'MagSafe wireless power banks, braided Kevlar cables, carbon cases.', 'https://images.unsplash.com/photo-1609592424083-d2d1421ecae5?q=80&w=800', 'Zap', 24),
+('cat-smarthome', 'Smart Home & Drones', 'smarthome', '4K cinematic drones, ambient neural lights, smart security systems.', 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?q=80&w=800', 'Home', 11)
+ON CONFLICT (slug) DO NOTHING;
+
+-- C. Hero Banners
+INSERT INTO public.banners (id, title, subtitle, image_url, badge, cta_text, cta_link, is_active)
+VALUES
+('banner-1', 'CYBERPHONE 16 PRO MAX', 'Forged in Grade 5 Titanium with Neural A18 Bionic Silicon', 'https://images.unsplash.com/photo-1695048133142-1a20484d2569?q=80&w=1200', 'FLAGSHIP RELEASE', 'Pre-Order Now', '/product/cyberphone-16-pro-max', true),
+('banner-2', 'SPATIAL PRO HEADPHONES', 'Zero-Latency Acoustic Isolation with Planar Drivers', 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?q=80&w=1200', 'ACOUSTIC LUXURY', 'Explore Audio', '/#products', true),
+('banner-3', 'QUANTUM MATRIX WATCH', 'Sapphire Glass Biometric Tracker with 7-Day Battery', 'https://images.unsplash.com/photo-1510017803434-a899398421b3?q=80&w=1200', 'NEXT-GEN WEARABLE', 'Shop Wearables', '/#products', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- D. Initial Products
 INSERT INTO public.products (id, name, slug, category, tagline, description, price, original_price, images, specs, is_featured, is_trending, is_new_release, stock, rating, review_count, tags)
 VALUES
 (
@@ -270,4 +466,12 @@ VALUES
   false, true, true, 10, 5.0, 42, ARRAY['apple', 'smartwatch', 'ultra', 'fitness']
 )
 ON CONFLICT (slug) DO NOTHING;
+
+-- E. Sample Active Coupons
+INSERT INTO public.coupons (id, code, discount_type, discount_value, min_order_amount, is_active)
+VALUES
+('cpn_welcome10', 'KLLY10', 'percentage', 10.00, 2000.00, true),
+('cpn_eid_special', 'EID500', 'fixed', 500.00, 5000.00, true)
+ON CONFLICT (code) DO NOTHING;
 `;
+

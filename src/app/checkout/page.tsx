@@ -362,8 +362,15 @@ export default function CheckoutPage() {
 
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <button
+              onClick={() => navigate(`/track?orderNumber=${encodeURIComponent(confirmedOrder.orderNumber)}`)}
+              className="flex-1 py-4 rounded-2xl bg-gradient-to-r from-cyan-400 via-cyan-500 to-purple-600 text-black font-extrabold text-xs uppercase tracking-wider hover:opacity-95 transition-all shadow-[0_0_20px_rgba(0,242,254,0.3)] cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Truck className="w-4 h-4" />
+              <span>Track Live Status</span>
+            </button>
+            <button
               onClick={() => navigate('/')}
-              className="flex-1 py-4 rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-600 text-black font-extrabold text-xs uppercase tracking-wider hover:opacity-95 transition-all shadow-lg cursor-pointer"
+              className="px-6 py-4 rounded-2xl bg-surface border border-white/15 text-white font-bold text-xs uppercase hover:bg-white/10 transition-colors"
             >
               Continue Shopping
             </button>

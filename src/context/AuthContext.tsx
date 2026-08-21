@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getSupabaseClient, getSupabaseConfig, saveSupabaseConfig, ensureSupabaseConfig } from '../lib/supabase';
 import { UserProfile } from '../types';
+import { isUserBanned, recordUserActivity } from '../lib/usersStore';
 
 export const DEFAULT_ADMIN_EMAIL = 'admin.osman@gmail.com';
 export const DEFAULT_ADMIN_PASSWORD = 'osmanjj';
@@ -78,6 +79,15 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
 
   // Trigger pending checkout if one was waiting
   const handleAuthSuccess = useCallback((authedUser: UserProfile) => {
+    if (isUserBanned(authedUser.email)) {
+      setUser(null);
+      localStorage.removeItem('kllyeein_user');
+      setIsAuthModalOpenState(false);
+      alert('Your account has been suspended by the administrator. Contact support@kllyeein.com');
+      return;
+    }
+
+    recordUserActivity(authedUser);
     setUser(authedUser);
     localStorage.setItem('kllyeein_user', JSON.stringify(authedUser));
     setIsAuthModalOpenState(false);
@@ -91,9 +101,29 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
     }
   }, [pendingCheckoutCallback]);
 
-  // Initial Auth Check & Supabase Session Listener
+  // Initial Auth Check & Supabase Session Listener & Ban sync
   useEffect(() => {
     let isMounted = true;
+
+    // Listen for ban updates
+    const handleUsersUpdate = () => {
+      if (typeof window !== 'undefined') {
+        const savedUser = localStorage.getItem('kllyeein_user');
+        if (savedUser) {
+          try {
+            const u = JSON.parse(savedUser);
+            if (isUserBanned(u.email)) {
+              setUser(null);
+              localStorage.removeItem('kllyeein_user');
+              alert('Notice: Your account has been suspended by the administrator.');
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    };
+    window.addEventListener('kllyeein_users_updated', handleUsersUpdate);
 
     async function initAuth() {
       await ensureSupabaseConfig();
@@ -113,6 +143,14 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
 
         if (session?.user && isMounted) {
           const email = session.user.email || '';
+          if (isUserBanned(email)) {
+            setUser(null);
+            localStorage.removeItem('kllyeein_user');
+            await client.auth.signOut().catch(() => {});
+            if (isMounted) setIsLoading(false);
+            return;
+          }
+
           const isAdm = getRoleFromEmail(email) === 'admin';
           const name =
             session.user.user_metadata?.full_name ||
@@ -130,6 +168,7 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
             avatarUrl: avatar,
             role: isAdm ? 'admin' : 'customer',
           };
+          recordUserActivity(userObj);
           setUser(userObj);
           localStorage.setItem('kllyeein_user', JSON.stringify(userObj));
         } else if (isMounted) {
@@ -137,7 +176,13 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
           const savedUser = localStorage.getItem('kllyeein_user');
           if (savedUser) {
             try {
-              setUser(JSON.parse(savedUser));
+              const parsed = JSON.parse(savedUser);
+              if (isUserBanned(parsed.email)) {
+                setUser(null);
+                localStorage.removeItem('kllyeein_user');
+              } else {
+                setUser(parsed);
+              }
             } catch {
               setUser(null);
             }
@@ -151,6 +196,13 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
           if (!isMounted) return;
           if (session?.user) {
             const email = session.user.email || '';
+            if (isUserBanned(email)) {
+              setUser(null);
+              localStorage.removeItem('kllyeein_user');
+              client.auth.signOut().catch(() => {});
+              return;
+            }
+
             const isAdm = getRoleFromEmail(email) === 'admin';
             const name =
               session.user.user_metadata?.full_name ||
@@ -168,6 +220,7 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
               avatarUrl: avatar,
               role: isAdm ? 'admin' : 'customer',
             };
+            recordUserActivity(userObj);
             setUser(userObj);
             localStorage.setItem('kllyeein_user', JSON.stringify(userObj));
           } else if (event === 'SIGNED_OUT') {
@@ -183,7 +236,13 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
         const savedUser = localStorage.getItem('kllyeein_user');
         if (savedUser && isMounted) {
           try {
-            setUser(JSON.parse(savedUser));
+            const parsed = JSON.parse(savedUser);
+            if (isUserBanned(parsed.email)) {
+              setUser(null);
+              localStorage.removeItem('kllyeein_user');
+            } else {
+              setUser(parsed);
+            }
           } catch {
             setUser(null);
           }
@@ -196,6 +255,7 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
 
     return () => {
       isMounted = false;
+      window.removeEventListener('kllyeein_users_updated', handleUsersUpdate);
     };
   }, [adminCredentials.email]);
 
@@ -248,6 +308,10 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
 
     if (!trimmedEmail || !trimmedPass) {
       return { error: 'Please enter both email and password.' };
+    }
+
+    if (isUserBanned(trimmedEmail)) {
+      return { error: 'Your account has been suspended by the administrator. Contact support@kllyeein.com for assistance.' };
     }
 
     const isAdminEmail = trimmedEmail === adminCredentials.email.toLowerCase() || trimmedEmail === DEFAULT_ADMIN_EMAIL.toLowerCase();
@@ -341,6 +405,10 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
     }
     if (cleanPass.length < 6) {
       return { error: 'Password must be at least 6 characters.' };
+    }
+
+    if (isUserBanned(cleanEmail)) {
+      return { error: 'This email address has been suspended by the administrator.' };
     }
 
     // If Supabase is configured, create Supabase user

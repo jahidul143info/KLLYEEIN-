@@ -52,6 +52,12 @@ import {
   Smartphone,
   QrCode,
   Banknote,
+  Users,
+  UserX,
+  UserCheck,
+  UserPlus,
+  Ban,
+  UserCog,
 } from 'lucide-react';
 import { Product, ProductSpec } from '../../types';
 import { getCloudinaryImageUrl } from '../../lib/cloudinary';
@@ -59,11 +65,21 @@ import { compressImageFile, uploadImageToServer } from '../../lib/imageUploadUti
 import { useAuth, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from '../../context/AuthContext';
 import { AdminOrder } from '../api/orders/route';
 import { StoreSettings, DEFAULT_STORE_SETTINGS, getStoreSettings, saveStoreSettings } from '../../data/storeSettings';
+import {
+  ManagedUser,
+  getAllUsers,
+  saveAllUsers,
+  banUser,
+  unbanUser,
+  deleteUser,
+  updateUserRole,
+} from '../../lib/usersStore';
 
 type AdminTab =
   | 'overview'
   | 'products'
   | 'orders'
+  | 'users'
   | 'categories'
   | 'banners'
   | 'media'
@@ -272,17 +288,230 @@ export default function AdminPanelPage() {
     }
   };
 
+  // Users Management State
+  const [usersList, setUsersList] = useState<ManagedUser[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userFilterStatus, setUserFilterStatus] = useState<'all' | 'customer' | 'admin' | 'banned'>('all');
+  const [userFeedbackMsg, setUserFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Ban User Modal Dialog State
+  const [userToBan, setUserToBan] = useState<ManagedUser | null>(null);
+  const [banReasonText, setBanReasonText] = useState('Suspended by Administrator due to policy violation or suspicious order behavior');
+  const [isProcessingBan, setIsProcessingBan] = useState(false);
+
+  // Create User Modal State
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: 'Dhaka',
+    role: 'customer' as 'customer' | 'admin',
+  });
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+
+  const loadUsers = async () => {
+    setIsLoadingUsers(true);
+    try {
+      const local = getAllUsers();
+      setUsersList(local);
+
+      const res = await fetch('/api/users');
+      const data = await res.json();
+      if (data?.users && Array.isArray(data.users)) {
+        setUsersList(data.users);
+        saveAllUsers(data.users);
+      }
+    } catch (err) {
+      console.error('Failed to load users:', err);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  const handleConfirmBanUser = async () => {
+    if (!userToBan) return;
+    setIsProcessingBan(true);
+    try {
+      const ok = banUser(userToBan.id, banReasonText);
+      if (ok) {
+        await fetch('/api/users', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: userToBan.id,
+            action: 'ban',
+            banReason: banReasonText,
+          }),
+        }).catch(() => {});
+
+        const updated = getAllUsers();
+        setUsersList(updated);
+        setUserFeedbackMsg({ text: `Account for ${userToBan.fullName} (${userToBan.email}) has been banned & suspended.`, type: 'success' });
+        setTimeout(() => setUserFeedbackMsg(null), 4000);
+      } else {
+        setUserFeedbackMsg({ text: 'Cannot ban the Super Admin account.', type: 'error' });
+        setTimeout(() => setUserFeedbackMsg(null), 3000);
+      }
+    } catch {
+      setUserFeedbackMsg({ text: 'Failed to ban user.', type: 'error' });
+    } finally {
+      setIsProcessingBan(false);
+      setUserToBan(null);
+    }
+  };
+
+  const handleUnbanUser = async (u: ManagedUser) => {
+    try {
+      unbanUser(u.id);
+      await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: u.id,
+          action: 'unban',
+        }),
+      }).catch(() => {});
+
+      const updated = getAllUsers();
+      setUsersList(updated);
+      setUserFeedbackMsg({ text: `Account for ${u.fullName} has been reactivated and unbanned.`, type: 'success' });
+      setTimeout(() => setUserFeedbackMsg(null), 4000);
+    } catch {
+      setUserFeedbackMsg({ text: 'Failed to unban user.', type: 'error' });
+    }
+  };
+
+  const handleDeleteUser = async (u: ManagedUser) => {
+    if (!confirm(`Are you sure you want to permanently delete the account of ${u.fullName} (${u.email})? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const ok = deleteUser(u.id);
+      if (ok) {
+        await fetch(`/api/users?id=${u.id}`, {
+          method: 'DELETE',
+        }).catch(() => {});
+
+        const updated = getAllUsers();
+        setUsersList(updated);
+        setUserFeedbackMsg({ text: `Account ${u.email} permanently deleted from database.`, type: 'success' });
+        setTimeout(() => setUserFeedbackMsg(null), 4000);
+      } else {
+        setUserFeedbackMsg({ text: 'Cannot delete the Super Admin account.', type: 'error' });
+        setTimeout(() => setUserFeedbackMsg(null), 3000);
+      }
+    } catch {
+      setUserFeedbackMsg({ text: 'Failed to delete user.', type: 'error' });
+    }
+  };
+
+  const handleToggleUserRole = async (u: ManagedUser) => {
+    const newRole: 'customer' | 'admin' = u.role === 'admin' ? 'customer' : 'admin';
+    try {
+      updateUserRole(u.id, newRole);
+      await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: u.id,
+          action: 'update_role',
+          role: newRole,
+        }),
+      }).catch(() => {});
+
+      const updated = getAllUsers();
+      setUsersList(updated);
+      setUserFeedbackMsg({ text: `User ${u.fullName} role updated to ${newRole.toUpperCase()}.`, type: 'success' });
+      setTimeout(() => setUserFeedbackMsg(null), 3500);
+    } catch {
+      setUserFeedbackMsg({ text: 'Failed to change user role.', type: 'error' });
+    }
+  };
+
+  const handleCreateNewUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUserForm.email || !newUserForm.fullName) return;
+    setIsCreatingUser(true);
+    try {
+      const emailClean = newUserForm.email.trim().toLowerCase();
+      const existing = usersList.find((u) => u.email.toLowerCase() === emailClean);
+      if (existing) {
+        alert('A user with this email already exists!');
+        setIsCreatingUser(false);
+        return;
+      }
+
+      const created: ManagedUser = {
+        id: `user-${Date.now()}`,
+        email: emailClean,
+        fullName: newUserForm.fullName.trim(),
+        phone: newUserForm.phone.trim() || undefined,
+        address: newUserForm.address.trim() || undefined,
+        city: newUserForm.city || 'Dhaka',
+        role: newUserForm.role,
+        isBanned: false,
+        createdAt: new Date().toISOString(),
+        ordersCount: 0,
+        totalSpent: 0,
+      };
+
+      const updated = [created, ...usersList];
+      saveAllUsers(updated);
+      setUsersList(updated);
+
+      await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(created),
+      }).catch(() => {});
+
+      setIsAddUserModalOpen(false);
+      setNewUserForm({
+        fullName: '',
+        email: '',
+        phone: '',
+        address: '',
+        city: 'Dhaka',
+        role: 'customer',
+      });
+      setUserFeedbackMsg({ text: `Account for ${created.fullName} created successfully.`, type: 'success' });
+      setTimeout(() => setUserFeedbackMsg(null), 4000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to create user');
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
+
   useEffect(() => {
     if (isAdmin) {
       loadProducts();
       loadOrders();
+      loadUsers();
 
-      // Real-time polling: refresh orders every 7 seconds so customer orders appear automatically
+      // Real-time polling: refresh orders & users every 7 seconds
       const pollTimer = setInterval(() => {
         loadOrders();
+        loadUsers();
       }, 7000);
 
-      return () => clearInterval(pollTimer);
+      const handleUsersUpdate = (e: any) => {
+        if (e?.detail) {
+          setUsersList(e.detail);
+        } else {
+          setUsersList(getAllUsers());
+        }
+      };
+      window.addEventListener('kllyeein_users_updated', handleUsersUpdate);
+
+      return () => {
+        clearInterval(pollTimer);
+        window.removeEventListener('kllyeein_users_updated', handleUsersUpdate);
+      };
     }
   }, [isAdmin]);
 
@@ -852,6 +1081,33 @@ export default function AdminPanelPage() {
                   {pendingOrdersCount} new
                 </span>
               )}
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('users');
+                setMobileSidebarOpen(false);
+              }}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                activeTab === 'users'
+                  ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-md shadow-indigo-500/10'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Users className="w-4 h-4 text-indigo-400" />
+                <span>Users & Accounts</span>
+              </div>
+              <div className="flex items-center gap-1.5 font-mono text-[10px]">
+                {usersList.filter((u) => u.isBanned).length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold">
+                    {usersList.filter((u) => u.isBanned).length} banned
+                  </span>
+                )}
+                <span className="px-2 py-0.5 rounded-full bg-white/10 text-gray-300">
+                  {usersList.length}
+                </span>
+              </div>
             </button>
 
             <button
@@ -2024,6 +2280,626 @@ export default function AdminPanelPage() {
                       Close Invoice View
                     </button>
                   </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB: USERS & ACCOUNTS MANAGEMENT */}
+        {activeTab === 'users' && (
+          <div className="space-y-6">
+            {/* Feedback notification toast */}
+            {userFeedbackMsg && (
+              <div
+                className={`p-4 rounded-2xl border text-xs font-semibold flex items-center justify-between gap-3 shadow-xl animate-fade-in ${
+                  userFeedbackMsg.type === 'success'
+                    ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
+                    : 'bg-rose-950/80 border-rose-500/50 text-rose-300'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  {userFeedbackMsg.type === 'success' ? (
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span>{userFeedbackMsg.text}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUserFeedbackMsg(null)}
+                  className="p-1 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* KPI STATS FOR USERS */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#0d0f1a] border border-indigo-500/20 shadow-xl space-y-2">
+                <div className="flex items-center justify-between text-gray-400 text-xs font-mono">
+                  <span>Total Users</span>
+                  <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
+                    <Users className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-white font-mono">{usersList.length}</div>
+                <div className="text-[11px] text-indigo-300 font-semibold">Registered Accounts</div>
+              </div>
+
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#0d0f1a] border border-emerald-500/20 shadow-xl space-y-2">
+                <div className="flex items-center justify-between text-gray-400 text-xs font-mono">
+                  <span>Active Customers</span>
+                  <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-white font-mono">
+                  {usersList.filter((u) => !u.isBanned && u.role !== 'admin').length}
+                </div>
+                <div className="text-[11px] text-emerald-400 font-semibold">Good Standing</div>
+              </div>
+
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#0d0f1a] border border-rose-500/30 shadow-xl space-y-2">
+                <div className="flex items-center justify-between text-gray-400 text-xs font-mono">
+                  <span>Banned / Suspended</span>
+                  <div className="p-2 rounded-xl bg-rose-500/10 text-rose-400">
+                    <UserX className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-rose-400 font-mono">
+                  {usersList.filter((u) => u.isBanned).length}
+                </div>
+                <div className="text-[11px] text-rose-300 font-semibold">Access Blocked</div>
+              </div>
+
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#0d0f1a] border border-purple-500/20 shadow-xl space-y-2">
+                <div className="flex items-center justify-between text-gray-400 text-xs font-mono">
+                  <span>Administrators</span>
+                  <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-purple-300 font-mono">
+                  {usersList.filter((u) => u.role === 'admin').length}
+                </div>
+                <div className="text-[11px] text-purple-300 font-semibold">Staff & Admin</div>
+              </div>
+            </div>
+
+            {/* MAIN USERS CARD */}
+            <div className="p-5 sm:p-7 rounded-3xl bg-[#0d0f1a] border border-white/10 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+                <div>
+                  <h2 className="text-lg font-bold text-white font-mono flex items-center gap-2">
+                    <Users className="w-5 h-5 text-indigo-400" />
+                    User Directory & Account Controls
+                  </h2>
+                  <p className="text-xs text-gray-400">
+                    View customer profiles, ban malicious accounts, restore access, or permanently remove users.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddUserModalOpen(true)}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-400 hover:to-cyan-400 text-black font-bold text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>+ Add User</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => loadUsers()}
+                    disabled={isLoadingUsers}
+                    title="Refresh Users"
+                    className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-mono flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingUsers ? 'animate-spin' : ''}`} />
+                    <span className="hidden sm:inline">Refresh</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* SEARCH & FILTERS BAR */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search by name, email, phone number, or city..."
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/60 border border-white/15 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-indigo-400 font-mono transition-colors"
+                  />
+                  {userSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setUserSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-xs"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+                  <button
+                    type="button"
+                    onClick={() => setUserFilterStatus('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                      userFilterStatus === 'all'
+                        ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/20'
+                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    All ({usersList.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUserFilterStatus('customer')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                      userFilterStatus === 'customer'
+                        ? 'bg-cyan-500 text-black font-bold shadow-md shadow-cyan-500/20'
+                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    Customers ({usersList.filter((u) => u.role !== 'admin' && !u.isBanned).length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUserFilterStatus('banned')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                      userFilterStatus === 'banned'
+                        ? 'bg-rose-500 text-white shadow-md shadow-rose-500/20'
+                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    Banned ({usersList.filter((u) => u.isBanned).length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUserFilterStatus('admin')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                      userFilterStatus === 'admin'
+                        ? 'bg-purple-500 text-white shadow-md shadow-purple-500/20'
+                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    Admins ({usersList.filter((u) => u.role === 'admin').length})
+                  </button>
+                </div>
+              </div>
+
+              {/* FILTERED USERS TABLE */}
+              {(() => {
+                const query = userSearchQuery.trim().toLowerCase();
+                const filtered = usersList.filter((u) => {
+                  // Filter by status
+                  if (userFilterStatus === 'banned' && !u.isBanned) return false;
+                  if (userFilterStatus === 'customer' && (u.role === 'admin' || u.isBanned)) return false;
+                  if (userFilterStatus === 'admin' && u.role !== 'admin') return false;
+
+                  // Filter by search query
+                  if (!query) return true;
+                  const matchName = u.fullName?.toLowerCase().includes(query);
+                  const matchEmail = u.email?.toLowerCase().includes(query);
+                  const matchPhone = u.phone?.toLowerCase().includes(query);
+                  const matchCity = u.city?.toLowerCase().includes(query);
+                  const matchAddress = u.address?.toLowerCase().includes(query);
+                  return matchName || matchEmail || matchPhone || matchCity || matchAddress;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="p-12 text-center rounded-2xl bg-black/40 border border-dashed border-white/10 space-y-3">
+                      <Users className="w-10 h-10 text-gray-600 mx-auto" />
+                      <div className="text-sm font-bold text-gray-300">No users found</div>
+                      <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                        {userSearchQuery
+                          ? `No accounts matching "${userSearchQuery}". Try clearing search keywords.`
+                          : 'No user accounts match the selected filter category.'}
+                      </p>
+                      {userSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setUserSearchQuery('')}
+                          className="px-3.5 py-1.5 rounded-xl bg-white/10 text-xs text-white hover:bg-white/20 font-semibold transition-all"
+                        >
+                          Clear Search
+                        </button>
+                      )}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-white/10 text-gray-400 uppercase font-mono text-[10px]">
+                          <th className="pb-3 font-semibold">User Details</th>
+                          <th className="pb-3 font-semibold">Contact & Location</th>
+                          <th className="pb-3 font-semibold">Role</th>
+                          <th className="pb-3 font-semibold">Status</th>
+                          <th className="pb-3 font-semibold">Activity</th>
+                          <th className="pb-3 font-semibold text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {filtered.map((u) => {
+                          const isSuperAdmin =
+                            u.email.toLowerCase() === DEFAULT_ADMIN_EMAIL.toLowerCase() ||
+                            u.email.toLowerCase() === adminCredentials?.email?.toLowerCase();
+
+                          return (
+                            <tr
+                              key={u.id || u.email}
+                              className={`hover:bg-white/[0.02] transition-colors ${
+                                u.isBanned ? 'bg-rose-950/10' : ''
+                              }`}
+                            >
+                              {/* User Details */}
+                              <td className="py-3.5 pr-3">
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border ${
+                                      u.isBanned
+                                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                        : u.role === 'admin'
+                                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                                        : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                                    }`}
+                                  >
+                                    {u.fullName?.charAt(0)?.toUpperCase() || 'U'}
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    <div className="font-bold text-white flex items-center gap-1.5">
+                                      <span>{u.fullName || 'Anonymous'}</span>
+                                      {isSuperAdmin && (
+                                        <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-mono font-bold border border-amber-500/30">
+                                          Super Admin
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[11px] text-gray-400 font-mono">{u.email}</div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Contact & Location */}
+                              <td className="py-3.5 pr-3">
+                                <div className="space-y-0.5">
+                                  <div className="font-mono text-gray-300">
+                                    {u.phone || <span className="text-gray-600 italic">No phone</span>}
+                                  </div>
+                                  <div className="text-[10px] text-gray-400">
+                                    {u.city ? `${u.city}${u.address ? `, ${u.address}` : ''}` : 'Dhaka, Bangladesh'}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Role */}
+                              <td className="py-3.5 pr-3">
+                                {u.role === 'admin' ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold font-mono">
+                                    <ShieldCheck className="w-3 h-3" /> Admin
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[10px] font-semibold">
+                                    Customer
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Status */}
+                              <td className="py-3.5 pr-3">
+                                {u.isBanned ? (
+                                  <div className="space-y-1">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold font-mono">
+                                      <Ban className="w-3 h-3 text-rose-400" /> BANNED
+                                    </span>
+                                    {u.banReason && (
+                                      <p className="text-[9px] text-rose-400/80 line-clamp-1 max-w-[140px]" title={u.banReason}>
+                                        {u.banReason}
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Active
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Activity */}
+                              <td className="py-3.5 pr-3">
+                                <div className="space-y-0.5 font-mono text-[11px]">
+                                  <div className="text-cyan-300 font-bold">
+                                    {u.ordersCount !== undefined ? `${u.ordersCount} orders` : '0 orders'}
+                                  </div>
+                                  <div className="text-[10px] text-gray-400">
+                                    {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'Active Member'}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Actions */}
+                              <td className="py-3.5 text-right">
+                                {isSuperAdmin ? (
+                                  <span className="text-[10px] text-amber-400/80 font-mono italic">
+                                    Protected Account
+                                  </span>
+                                ) : (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    {/* Ban / Unban Toggle Button */}
+                                    {u.isBanned ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUnbanUser(u)}
+                                        title="Reactivate / Unban Account"
+                                        className="px-2.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                      >
+                                        <UserCheck className="w-3.5 h-3.5" />
+                                        <span>Unban</span>
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setUserToBan(u);
+                                          setBanReasonText('Suspended due to policy violation or unverified orders');
+                                        }}
+                                        title="Ban & Suspend User"
+                                        className="px-2.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                      >
+                                        <Ban className="w-3.5 h-3.5" />
+                                        <span>Ban</span>
+                                      </button>
+                                    )}
+
+                                    {/* Role toggle button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleUserRole(u)}
+                                      title={u.role === 'admin' ? 'Demote to Customer' : 'Promote to Admin'}
+                                      className="p-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-gray-300 hover:text-white border border-white/10 transition-all cursor-pointer"
+                                    >
+                                      <UserCog className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    {/* Delete User Button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteUser(u)}
+                                      title="Permanently Delete User"
+                                      className="p-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 border border-rose-500/20 transition-all cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* BAN REASON MODAL */}
+            {userToBan && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+                <div className="w-full max-w-md p-6 rounded-3xl bg-[#0d0f1a] border border-rose-500/40 shadow-2xl space-y-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+                        <Ban className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-white font-mono">Ban User Account</h3>
+                        <p className="text-xs text-rose-300">Suspend access and block login/checkout</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUserToBan(null)}
+                      className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-black/50 border border-white/10 space-y-1">
+                    <div className="text-xs font-bold text-white">{userToBan.fullName}</div>
+                    <div className="text-xs text-gray-400 font-mono">{userToBan.email}</div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-gray-300 block">
+                      Reason for suspension (visible to customer if they attempt login):
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={banReasonText}
+                      onChange={(e) => setBanReasonText(e.target.value)}
+                      placeholder="e.g. Repeated unverified COD orders or policy violation"
+                      className="w-full bg-black/60 border border-white/15 rounded-xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-400 font-mono leading-relaxed"
+                    />
+
+                    {/* Quick reason presets */}
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {[
+                        'Fake COD Orders',
+                        'Policy Violation',
+                        'Payment Dispute',
+                        'Suspicious Login',
+                      ].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setBanReasonText(`Suspended: ${preset}`)}
+                          className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-gray-300 border border-white/10 font-mono"
+                        >
+                          + {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setUserToBan(null)}
+                      className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isProcessingBan}
+                      onClick={handleConfirmBanUser}
+                      className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-all shadow-lg shadow-rose-600/30 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isProcessingBan ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Ban className="w-3.5 h-3.5" />
+                      )}
+                      <span>Confirm Ban</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ADD USER MODAL */}
+            {isAddUserModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+                <div className="w-full max-w-md p-6 rounded-3xl bg-[#0d0f1a] border border-indigo-500/40 shadow-2xl space-y-5">
+                  <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+                        <UserPlus className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-white font-mono">Create User Account</h3>
+                        <p className="text-xs text-indigo-300">Add a new customer or admin to store database</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddUserModalOpen(false)}
+                      className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleCreateNewUser} className="space-y-3.5">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-gray-300">Full Name *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Mahfuz Rahman"
+                        value={newUserForm.fullName}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, fullName: e.target.value })}
+                        className="w-full bg-black/60 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-gray-300">Email Address *</label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="e.g. mahfuz@example.com"
+                        value={newUserForm.email}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                        className="w-full bg-black/60 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-400 font-mono"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-gray-300">Phone Number</label>
+                        <input
+                          type="tel"
+                          placeholder="01700-112233"
+                          value={newUserForm.phone}
+                          onChange={(e) => setNewUserForm({ ...newUserForm, phone: e.target.value })}
+                          className="w-full bg-black/60 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-400 font-mono"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-gray-300">City / District</label>
+                        <input
+                          type="text"
+                          placeholder="Dhaka"
+                          value={newUserForm.city}
+                          onChange={(e) => setNewUserForm({ ...newUserForm, city: e.target.value })}
+                          className="w-full bg-black/60 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-gray-300">Street / Delivery Address</label>
+                      <input
+                        type="text"
+                        placeholder="House #, Road #, Area..."
+                        value={newUserForm.address}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, address: e.target.value })}
+                        className="w-full bg-black/60 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-gray-300">Account Role</label>
+                      <select
+                        value={newUserForm.role}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value as any })}
+                        className="w-full bg-black/60 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-400 cursor-pointer"
+                      >
+                        <option value="customer">Customer (Standard Buyer)</option>
+                        <option value="admin">Administrator (Full Admin Access)</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddUserModalOpen(false)}
+                        className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-all cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isCreatingUser}
+                        className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {isCreatingUser ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Check className="w-3.5 h-3.5" />
+                        )}
+                        <span>Save Account</span>
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
             )}

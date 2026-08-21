@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingBag, Search, User, Menu, X, Zap, Cpu, Database, ChevronRight, ShieldCheck } from 'lucide-react';
+import { ShoppingBag, Search, User, Menu, X, Zap, Cpu, Database, ChevronRight, ShieldCheck, Truck } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -70,9 +70,13 @@ export default function Navbar() {
             <Link to="/" className="hover:text-cyan-400 transition-colors">Home</Link>
             <a href="#categories" onClick={(e) => { e.preventDefault(); document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-cyan-400 transition-colors cursor-pointer">Categories</a>
             <a href="#products" onClick={(e) => { e.preventDefault(); document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-cyan-400 transition-colors cursor-pointer">All Gadgets</a>
+            <Link to="/track" className="hover:text-cyan-300 transition-colors flex items-center gap-1.5 text-cyan-400 font-bold bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/20">
+              <Truck className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Track Order</span>
+            </Link>
             {isAdmin && (
-              <Link to="/admin" className="hover:text-cyan-300 transition-all flex items-center gap-1 text-cyan-400 font-bold bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/20">
-                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+              <Link to="/admin" className="hover:text-purple-300 transition-all flex items-center gap-1 text-purple-400 font-bold bg-purple-500/10 px-2.5 py-1 rounded-lg border border-purple-500/20">
+                <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
                 Admin
               </Link>
             )}
@@ -231,6 +235,18 @@ export default function Navbar() {
                   <span>Shop All Gadgets</span>
                   <ChevronRight className="w-4 h-4 text-gray-500" />
                 </a>
+
+                <Link
+                  to="/track"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="px-3.5 py-3 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 font-bold flex items-center justify-between transition-all border border-cyan-500/20"
+                >
+                  <span className="flex items-center gap-2">
+                    <Truck className="w-4 h-4 text-cyan-400" />
+                    Track Order Live Status
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-cyan-400" />
+                </Link>
                 {isAdmin && (
                   <Link
                     to="/admin"

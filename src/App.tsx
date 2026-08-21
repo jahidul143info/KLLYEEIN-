@@ -12,6 +12,7 @@ import HomePage from './app/page';
 import ProductPage from './app/product/[slug]/page';
 import CartPage from './app/cart/page';
 import CheckoutPage from './app/checkout/page';
+import TrackOrderPage from './app/track/page';
 import AdminPage from './app/admin/page';
 
 /**
@@ -45,6 +46,8 @@ export default function App() {
               <Route path="/product/:slug" element={<ProductPage />} />
               <Route path="/cart" element={<CartPage />} />
               <Route path="/checkout" element={<CheckoutPage />} />
+              <Route path="/track" element={<TrackOrderPage />} />
+              <Route path="/track-order" element={<TrackOrderPage />} />
             </Route>
 
             {/* Pure, Dedicated Admin Panel Console (Zero Customer UI Clutter) */}
