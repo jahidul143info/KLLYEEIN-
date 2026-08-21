@@ -10,6 +10,7 @@ import AuthModal from './components/AuthModal';
 import HomePage from './app/page';
 import ProductPage from './app/product/[slug]/page';
 import CartPage from './app/cart/page';
+import CheckoutPage from './app/checkout/page';
 import AdminPage from './app/admin/page';
 
 /**
@@ -41,6 +42,7 @@ export default function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/product/:slug" element={<ProductPage />} />
               <Route path="/cart" element={<CartPage />} />
+              <Route path="/checkout" element={<CheckoutPage />} />
             </Route>
 
             {/* Pure, Dedicated Admin Panel Console (Zero Customer UI Clutter) */}

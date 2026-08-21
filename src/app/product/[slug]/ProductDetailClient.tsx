@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Product } from '../../../types';
 import { useCart } from '../../../context/CartContext';
 import { Star, ShieldCheck, Truck, RefreshCw, ShoppingBag, Zap, ArrowLeft, Share2, Check } from 'lucide-react';
@@ -10,6 +10,7 @@ import { PRODUCTS } from '../../../data/products';
 import { getCloudinaryImageUrl } from '../../../lib/cloudinary';
 
 export default function ProductDetailClient({ product }: { product: Product }) {
+  const navigate = useNavigate();
   const { addToCart, setIsCartOpen } = useCart();
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -21,7 +22,8 @@ export default function ProductDetailClient({ product }: { product: Product }) {
 
   const handleBuyNow = () => {
     addToCart(product, quantity);
-    setIsCartOpen(true);
+    setIsCartOpen(false);
+    navigate('/checkout');
   };
 
   const handleShare = () => {
