@@ -2,13 +2,11 @@
 
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Zap, ShieldCheck, Truck, Headphones, CreditCard, Send, Database } from 'lucide-react';
-import SupabaseSqlScriptModal from './SupabaseSqlScriptModal';
+import { ShieldCheck, Truck, Headphones, CreditCard, Send, MapPin, Phone, Mail, Clock } from 'lucide-react';
 
 export default function Footer() {
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
-  const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
 
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,7 +27,7 @@ export default function Footer() {
             </div>
             <div>
               <p className="font-bold text-white text-xs">Express BD Shipping</p>
-              <p className="text-[11px] text-gray-400">Fast 24-48 hr delivery</p>
+              <p className="text-[11px] text-gray-400">Fast 24-48 hr nationwide delivery</p>
             </div>
           </div>
 
@@ -39,7 +37,7 @@ export default function Footer() {
             </div>
             <div>
               <p className="font-bold text-white text-xs">100% Genuine Warranty</p>
-              <p className="text-[11px] text-gray-400">Official brand replacement</p>
+              <p className="text-[11px] text-gray-400">Official brand replacement support</p>
             </div>
           </div>
 
@@ -48,8 +46,8 @@ export default function Footer() {
               <CreditCard className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
-              <p className="font-bold text-white text-xs">bKash / Nagad / Cards</p>
-              <p className="text-[11px] text-gray-400">Secure instant checkout</p>
+              <p className="font-bold text-white text-xs">bKash / Nagad / COD</p>
+              <p className="text-[11px] text-gray-400">Secure instant checkout & pay on delivery</p>
             </div>
           </div>
 
@@ -59,7 +57,7 @@ export default function Footer() {
             </div>
             <div>
               <p className="font-bold text-white text-xs">24/7 VIP Support</p>
-              <p className="text-[11px] text-gray-400">Hotline & Dedicated Support</p>
+              <p className="text-[11px] text-gray-400">Hotline & WhatsApp Support</p>
             </div>
           </div>
         </div>
@@ -80,47 +78,53 @@ export default function Footer() {
             <span className="text-lg font-black tracking-tight text-white font-mono">KLLYEEIN</span>
           </Link>
           <p className="text-gray-400 leading-relaxed max-w-sm text-xs">
-            The premier destination for luxury cybernetic gadgets, titanium flagship smartphones, spatial acoustics, and high-performance wearable tech.
+            The premier destination for luxury cybernetic gadgets, titanium flagship smartphones, spatial acoustics, and high-performance wearable tech across Bangladesh.
           </p>
 
-          {/* Database Schema Button */}
-          <button
-            onClick={() => setIsSqlModalOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-300 hover:text-white hover:border-purple-400 text-xs font-semibold transition-all"
-          >
-            <Database className="w-4 h-4 text-purple-400" />
-            <span>Supabase SQL Setup Script</span>
-          </button>
+          <div className="space-y-2 pt-2 text-xs">
+            <div className="flex items-center gap-2.5 text-gray-300">
+              <MapPin className="w-4 h-4 text-cyan-400 shrink-0" />
+              <span>Jamuna Future Park, Level 4 (Zone D, Shop 402), Dhaka</span>
+            </div>
+            <div className="flex items-center gap-2.5 text-gray-300">
+              <Phone className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Hotline / WhatsApp: <strong className="text-white font-mono">+880 1700-112233</strong></span>
+            </div>
+            <div className="flex items-center gap-2.5 text-gray-300">
+              <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Showroom: 10:00 AM – 09:00 PM (Weekly Off: Wednesday)</span>
+            </div>
+          </div>
         </div>
 
-        {/* Quick Links */}
+        {/* Quick Categories */}
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-white mb-4">Categories</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-white mb-4 font-mono">Categories</h3>
           <ul className="space-y-2.5 text-xs">
-            <li><a href="#categories" onClick={() => document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-cyan-400 transition-colors cursor-pointer">Smartphones</a></li>
-            <li><a href="#categories" onClick={() => document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-cyan-400 transition-colors cursor-pointer">Neural Audio</a></li>
-            <li><a href="#categories" onClick={() => document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-cyan-400 transition-colors cursor-pointer">Quantum Wearables</a></li>
-            <li><a href="#categories" onClick={() => document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-cyan-400 transition-colors cursor-pointer">MagSafe Power</a></li>
-            <li><a href="#categories" onClick={() => document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-cyan-400 transition-colors cursor-pointer">Cinematic Drones</a></li>
+            <li><a href="#categories" onClick={() => document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-cyan-400 transition-colors cursor-pointer">Smartphones & Flagships</a></li>
+            <li><a href="#categories" onClick={() => document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-cyan-400 transition-colors cursor-pointer">Spatial Acoustics & ANC</a></li>
+            <li><a href="#categories" onClick={() => document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-cyan-400 transition-colors cursor-pointer">Quantum Wearables & Rings</a></li>
+            <li><a href="#categories" onClick={() => document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-cyan-400 transition-colors cursor-pointer">MagSafe & GaN Chargers</a></li>
+            <li><a href="#categories" onClick={() => document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-cyan-400 transition-colors cursor-pointer">Cinematic Drones & 4K Gimbals</a></li>
           </ul>
         </div>
 
         {/* Support Links */}
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-white mb-4">Support</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-white mb-4 font-mono">Customer Care</h3>
           <ul className="space-y-2.5 text-xs">
-            <li><span className="text-gray-400 hover:text-white cursor-pointer">Order Tracking</span></li>
-            <li><span className="text-gray-400 hover:text-white cursor-pointer">Warranty Claim</span></li>
-            <li><span className="text-gray-400 hover:text-white cursor-pointer">Shipping Policy</span></li>
-            <li><span className="text-gray-400 hover:text-white cursor-pointer">Return & Refund</span></li>
-            <li><span className="text-gray-400 hover:text-white cursor-pointer">BD Store Locations</span></li>
+            <li><Link to="/checkout" className="hover:text-cyan-400 transition-colors">Express Checkout</Link></li>
+            <li><a href="#products" onClick={() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-cyan-400 transition-colors cursor-pointer">Explore Catalog</a></li>
+            <li><span className="text-gray-400 hover:text-white cursor-pointer">Official Warranty Policy</span></li>
+            <li><span className="text-gray-400 hover:text-white cursor-pointer">7-Day Replacement Guarantee</span></li>
+            <li><span className="text-gray-400 hover:text-white cursor-pointer">Nationwide Courier Coverage</span></li>
           </ul>
         </div>
 
         {/* Newsletter */}
         <div className="space-y-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-white">VIP Cyber Newsletter</h3>
-          <p className="text-xs text-gray-400">Subscribe for early access to flagship drops & discount drops.</p>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-white font-mono">VIP Cyber Newsletter</h3>
+          <p className="text-xs text-gray-400">Subscribe for early access to flagship drops, flash sales & promo coupons.</p>
           {subscribed ? (
             <p className="text-xs text-cyan-400 font-bold bg-cyan-950/40 p-2.5 rounded-xl border border-cyan-500/30">
               ✓ Subscribed to VIP Cyber Club!
@@ -137,7 +141,7 @@ export default function Footer() {
               />
               <button
                 type="submit"
-                className="w-full py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 text-black font-bold text-xs flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity"
+                className="w-full py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 text-black font-bold text-xs flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity cursor-pointer"
               >
                 <span>Subscribe</span>
                 <Send className="w-3.5 h-3.5" />
@@ -151,20 +155,17 @@ export default function Footer() {
       <div className="border-t border-white/5 py-6 bg-black">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
           <p className="text-[11px] text-gray-400">
-            © {new Date().getFullYear()} KLLYEEIN TECH. Built with Next.js App Router, Supabase, Cloudinary & Tailwind CSS.
+            © {new Date().getFullYear()} KLLYEEIN GADGETS BANGLADESH. All Rights Reserved.
           </p>
           <div className="flex items-center gap-3 text-xs font-semibold text-gray-400">
-            <span>Privacy</span>
+            <span>Genuine Product Guarantee</span>
             <span>•</span>
-            <span>Terms</span>
+            <span>Secure bKash / Nagad / POS</span>
             <span>•</span>
-            <span>Vercel Deploy Ready</span>
+            <span>Fast Express BD Delivery</span>
           </div>
         </div>
       </div>
-
-      {/* SQL Setup Modal */}
-      <SupabaseSqlScriptModal isOpen={isSqlModalOpen} onClose={() => setIsSqlModalOpen(false)} />
     </footer>
   );
 }

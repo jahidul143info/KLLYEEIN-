@@ -2,13 +2,40 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { PRODUCTS } from '../data/products';
+import { Product } from '../types';
 import ProductCard from './ProductCard';
-import { Search, Filter, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Search, Filter, SlidersHorizontal, Sparkles, RefreshCw } from 'lucide-react';
 
 export default function ProductGrid() {
+  const [productList, setProductList] = useState<Product[]>(PRODUCTS);
+  const [isLoading, setIsLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'featured' | 'price-low' | 'price-high' | 'rating'>('featured');
+
+  // Fetch live products from API (which syncs with Admin additions & Supabase)
+  useEffect(() => {
+    let isMounted = true;
+    const fetchLiveProducts = async () => {
+      try {
+        const res = await fetch('/api/products');
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.products && Array.isArray(data.products) && isMounted) {
+            setProductList(data.products);
+          }
+        }
+      } catch (e) {
+        // Fallback to static PRODUCTS
+        console.log('Using static products catalog fallback');
+      }
+    };
+
+    fetchLiveProducts();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const handleUrlParams = () => {
@@ -30,7 +57,7 @@ export default function ProductGrid() {
   }, []);
 
   const filteredProducts = useMemo(() => {
-    return PRODUCTS.filter((p) => {
+    return productList.filter((p) => {
       const matchesCat = activeCategory === 'all' || p.category === activeCategory;
       const matchesSearch =
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -43,7 +70,7 @@ export default function ProductGrid() {
       if (sortBy === 'rating') return b.rating - a.rating;
       return (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0);
     });
-  }, [activeCategory, searchQuery, sortBy]);
+  }, [productList, activeCategory, searchQuery, sortBy]);
 
   return (
     <section id="products" className="py-16">
